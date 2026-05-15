@@ -413,7 +413,7 @@ function GameCard({ game, index }: { game: Game; index: number }) {
         ) : (
           <Link
             href={game.href ?? "#"}
-            className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-extrabold uppercase tracking-widest text-white transition-all duration-200 active:scale-95 shadow-lg"
+            className="inline-flex items-center gap-2 rounded-full px-5 py-3 text-xs font-extrabold uppercase tracking-widest text-white transition-all duration-200 active:scale-95 shadow-lg min-h-[44px]"
             style={{
               background: game.accent,
               boxShadow: `0 4px 20px ${game.accent}40`,
@@ -432,7 +432,9 @@ function GameCard({ game, index }: { game: Game; index: number }) {
 
 export function GameHub() {
   return (
-    <div className="relative z-10 flex min-h-screen w-full flex-col items-center justify-center px-4 py-12">
+    <div className="relative z-10 flex min-h-screen w-full flex-col items-center justify-center px-4 py-10 sm:py-12"
+      style={{ paddingLeft: 'max(1rem, env(safe-area-inset-left))', paddingRight: 'max(1rem, env(safe-area-inset-right))' }}
+    >
 
       {/* ── Header ── */}
       <motion.div
@@ -447,7 +449,7 @@ export function GameHub() {
         </div>
 
         <h1
-          className="text-5xl md:text-6xl font-extrabold tracking-[0.15em] uppercase mb-3"
+          className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-[0.15em] uppercase mb-3"
           style={{
             background: "linear-gradient(135deg, #fff 30%, #555 100%)",
             WebkitBackgroundClip: "text",

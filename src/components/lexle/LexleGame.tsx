@@ -437,6 +437,8 @@ export function LexleGame() {
         alignItems: 'center',
         overscrollBehavior: 'none',
         WebkitTapHighlightColor: 'transparent',
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
       }}
     >
       {/* Header */}
@@ -457,7 +459,7 @@ export function LexleGame() {
           <Link
             href="/"
             aria-label="Back to Arcade"
-            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: '#818384', textDecoration: 'none' }}
+            style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: '#818384', textDecoration: 'none' }}
             className="hover:text-white hover:bg-[#1a1a1c] transition-colors"
           >
             <svg style={{ width: 20, height: 20 }} viewBox="0 0 24 24" fill="currentColor">
@@ -467,7 +469,7 @@ export function LexleGame() {
           <button
             aria-label="How to play"
             onClick={() => setShowHelp(true)}
-            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: '#818384', cursor: 'pointer' }}
+            style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: '#818384', cursor: 'pointer' }}
             className="hover:text-white hover:bg-[#1a1a1c] transition-colors"
           >
             <svg style={{ width: 20, height: 20 }} viewBox="0 0 24 24" fill="currentColor">
@@ -477,7 +479,7 @@ export function LexleGame() {
           <button
             aria-label="Settings"
             onClick={() => setShowSettings(true)}
-            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: '#818384', cursor: 'pointer' }}
+            style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: '#818384', cursor: 'pointer' }}
             className="hover:text-white hover:bg-[#1a1a1c] transition-colors"
           >
             <svg style={{ width: 20, height: 20 }} viewBox="0 0 24 24" fill="currentColor">
@@ -519,7 +521,7 @@ export function LexleGame() {
           <button
             aria-label="Scratchpad"
             onClick={() => setScratchVisible(v => !v)}
-            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: '#818384', cursor: 'pointer' }}
+            style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: '#818384', cursor: 'pointer' }}
             className="hover:text-white hover:bg-[#1a1a1c] transition-colors"
           >
             <svg style={{ width: 20, height: 20 }} viewBox="0 0 24 24" fill="currentColor">

@@ -66,6 +66,8 @@ function BoxleHelpModal({ open, onClose }: { open: boolean; onClose: () => void 
               borderRadius: 20,
               padding: '24px 24px 20px',
               width: 'min(360px, calc(100vw - 32px))',
+              maxHeight: 'min(85dvh, 560px)',
+              overflowY: 'auto',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -207,6 +209,8 @@ export function BoxleGame() {
       overscrollBehavior: 'none',
       WebkitTapHighlightColor: 'transparent',
       userSelect: 'none',
+      paddingLeft: 'env(safe-area-inset-left)',
+      paddingRight: 'env(safe-area-inset-right)',
     }}>
 
       {/* ══ HEADER ═══════════════════════════════════════════════════════════ */}
@@ -247,12 +251,13 @@ export function BoxleGame() {
               key={n}
               onClick={() => changeSize(n)}
               style={{
-                width: 36, height: 28, borderRadius: 6, cursor: 'pointer',
+                minWidth: 40, height: 36, borderRadius: 6, cursor: 'pointer',
                 border:      `1px solid ${dotCount === n ? '#538d4e' : '#3a3a3c'}`,
                 background:  dotCount === n ? '#538d4e22' : 'transparent',
                 color:       dotCount === n ? '#538d4e'   : '#555',
-                fontSize: '0.6rem', fontWeight: 700,
+                fontSize: '0.62rem', fontWeight: 700,
                 transition: 'all 0.15s',
+                padding: '0 6px',
               }}
             >
               {n - 1}×{n - 1}
@@ -262,9 +267,9 @@ export function BoxleGame() {
             onClick={() => setShowHelp(true)}
             aria-label="How to Play"
             style={{
-              width: 28, height: 28, borderRadius: 6, cursor: 'pointer',
+              width: 36, height: 36, borderRadius: 6, cursor: 'pointer',
               border: '1px solid #3a3a3c', background: 'transparent',
-              color: '#555', fontSize: '0.7rem', fontWeight: 700,
+              color: '#555', fontSize: '0.75rem', fontWeight: 700,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
             className="hover:border-white/30 hover:text-white transition-colors"
@@ -457,14 +462,15 @@ export function BoxleGame() {
       <div style={{
         flex: 1, minHeight: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: '100%', padding: '0 10px 10px',
+        width: '100%',
+        padding: '0 max(10px, env(safe-area-inset-left)) 10px max(10px, env(safe-area-inset-right))',
       }}>
         <svg
           viewBox={`0 0 ${svgSize} ${svgSize}`}
           style={{
             width: '100%',
             maxWidth: svgSize,
-            maxHeight: 'calc(100dvh - 220px - env(safe-area-inset-bottom, 0px))',
+            maxHeight: 'calc(100dvh - 210px - env(safe-area-inset-bottom, 0px))',
             height: 'auto',
             display: 'block',
             touchAction: 'manipulation',
@@ -656,7 +662,7 @@ export function BoxleGame() {
         <button
           onClick={reset}
           style={{
-            padding: '8px 28px', borderRadius: 9999,
+            padding: '10px 28px', borderRadius: 9999, minHeight: 44,
             border: '1px solid #3a3a3c', background: 'transparent',
             color: '#555', fontSize: '0.72rem', fontWeight: 700,
             textTransform: 'uppercase', letterSpacing: '0.1em', cursor: 'pointer',

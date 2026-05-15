@@ -184,7 +184,7 @@ function SetupModal({
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                className="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+                className="flex-1 py-3 rounded-lg text-xs font-bold transition-all min-h-[44px]"
                 style={{
                   border:     `1px solid ${mode === m ? '#e8b86d' : '#3a3a3c'}`,
                   background: mode === m ? '#e8b86d18' : 'transparent',
@@ -215,7 +215,7 @@ function SetupModal({
                     <button
                       key={col}
                       onClick={() => setCpuColor(col === 1 ? 2 : 1)}
-                      className="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+                      className="flex-1 py-3 rounded-lg text-xs font-bold transition-all min-h-[44px]"
                       style={{
                         border:     `1px solid ${humanColor === col ? '#e8b86d' : '#3a3a3c'}`,
                         background: humanColor === col ? '#e8b86d18' : 'transparent',
@@ -271,7 +271,7 @@ function SetupModal({
                     setNames(n)
                   }}
                   placeholder={i === 0 ? 'Black player' : 'White player'}
-                  className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/25 outline-none focus:border-white/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px]"
                 />
               </div>
             )
@@ -286,7 +286,7 @@ function SetupModal({
               <button
                 key={s}
                 onClick={() => setSize(s)}
-                className="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+                className="flex-1 py-3 rounded-lg text-xs font-bold transition-all min-h-[44px]"
                 style={{
                   border:     `1px solid ${size === s ? '#e8b86d' : '#3a3a3c'}`,
                   background: size === s ? '#e8b86d18' : 'transparent',
@@ -312,7 +312,7 @@ function SetupModal({
               <button
                 key={k}
                 onClick={() => setKomi(k)}
-                className="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+                className="flex-1 py-3 rounded-lg text-xs font-bold transition-all min-h-[44px]"
                 style={{
                   border:     `1px solid ${komi === k ? '#c77dff' : '#3a3a3c'}`,
                   background: komi === k ? '#c77dff18' : 'transparent',
@@ -684,9 +684,9 @@ function GoHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) 
               background: '#18181a',
               border: '1px solid #3a3a3c',
               borderRadius: 20,
-              padding: '24px 24px 20px',
+              padding: '20px 20px 16px',
               width: 'min(380px, calc(100vw - 32px))',
-              maxHeight: 'min(80dvh, 600px)',
+              maxHeight: 'min(85dvh, 600px)',
               overflowY: 'auto',
             }}
           >
@@ -939,6 +939,8 @@ export function GoGame() {
       WebkitTapHighlightColor: 'transparent',
       userSelect: 'none',
       position: 'relative',
+      paddingLeft: 'env(safe-area-inset-left)',
+      paddingRight: 'env(safe-area-inset-right)',
     }}>
 
       {/* ── Setup Modal ─────────────────────────────────────────────────────── */}
@@ -1051,11 +1053,12 @@ export function GoGame() {
                 setCpuThinking(false)
               }}
               style={{
-                width: 38, height: 28, borderRadius: 6, cursor: 'pointer',
+                minWidth: 40, height: 36, borderRadius: 6, cursor: 'pointer',
                 border:     `1px solid ${boardSize === s ? '#e8b86d' : '#3a3a3c'}`,
                 background: boardSize === s ? '#e8b86d22' : 'transparent',
                 color:      boardSize === s ? '#e8b86d'   : '#555',
-                fontSize: '0.58rem', fontWeight: 700, transition: 'all 0.15s',
+                fontSize: '0.6rem', fontWeight: 700, transition: 'all 0.15s',
+                padding: '0 6px',
               }}
             >
               {s}×{s}
@@ -1065,9 +1068,9 @@ export function GoGame() {
             onClick={() => setShowHelp(true)}
             aria-label="How to Play"
             style={{
-              width: 28, height: 28, borderRadius: 6, cursor: 'pointer',
+              width: 36, height: 36, borderRadius: 6, cursor: 'pointer',
               border: '1px solid #3a3a3c', background: 'transparent',
-              color: '#555', fontSize: '0.7rem', fontWeight: 700,
+              color: '#555', fontSize: '0.75rem', fontWeight: 700,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
             className="hover:border-white/30 hover:text-white transition-colors"
@@ -1188,7 +1191,8 @@ export function GoGame() {
       <div style={{
         flex: 1, minHeight: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: '100%', padding: '0 10px 8px',
+        width: '100%',
+        padding: '0 max(10px, env(safe-area-inset-left)) 8px max(10px, env(safe-area-inset-right))',
       }}>
         <GoBoard
           game={game}
@@ -1217,7 +1221,7 @@ export function GoGame() {
               onClick={handlePass}
               disabled={isLocked}
               style={{
-                padding: '8px 24px', borderRadius: 9999,
+                padding: '10px 20px', borderRadius: 9999, minHeight: 44,
                 border: '1px solid #3a3a3c', background: 'transparent',
                 color: '#555', fontSize: '0.7rem', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.1em',
@@ -1226,13 +1230,13 @@ export function GoGame() {
               }}
               className="hover:border-white/30 hover:text-white transition-colors disabled:pointer-events-none"
             >
-              Pass (P)
+              Pass
             </button>
             <button
               onClick={() => setShowResign(true)}
               disabled={isLocked}
               style={{
-                padding: '8px 24px', borderRadius: 9999,
+                padding: '10px 20px', borderRadius: 9999, minHeight: 44,
                 border: '1px solid #3a3a3c', background: 'transparent',
                 color: '#555', fontSize: '0.7rem', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.1em',
@@ -1246,7 +1250,7 @@ export function GoGame() {
             <button
               onClick={() => { setGame(createGame(boardSize, komi)); setHovered(null); setCpuThinking(false) }}
               style={{
-                padding: '8px 20px', borderRadius: 9999,
+                padding: '10px 18px', borderRadius: 9999, minHeight: 44,
                 border: '1px solid #3a3a3c', background: 'transparent',
                 color: '#555', fontSize: '0.7rem', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.1em', cursor: 'pointer',
@@ -1260,7 +1264,7 @@ export function GoGame() {
           <button
             onClick={handleRematch}
             style={{
-              padding: '8px 36px', borderRadius: 9999,
+              padding: '12px 36px', borderRadius: 9999, minHeight: 44,
               border: 'none', background: '#e8b86d',
               color: '#1c1408', fontSize: '0.72rem', fontWeight: 800,
               textTransform: 'uppercase', letterSpacing: '0.1em', cursor: 'pointer',

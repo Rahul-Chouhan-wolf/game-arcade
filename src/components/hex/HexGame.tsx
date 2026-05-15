@@ -264,15 +264,15 @@ function TutorialModal({ open, onClose }: { open: boolean; onClose: () => void }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', overflowY: 'auto' }}
     >
       <motion.div
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         transition={{ type: 'spring', damping: 18, stiffness: 280 }}
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#18181a] shadow-2xl"
-        style={{ overflow: 'hidden' }}
+        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#18181a] shadow-2xl my-3"
+        style={{ overflow: 'hidden', maxHeight: 'min(92dvh, 680px)', overflowY: 'auto' }}
       >
         {/* Progress bar */}
         <div className="h-1 bg-white/5">
@@ -364,14 +364,14 @@ function SetupModal({ open, names: initNames, size: initSize, onStart, onTutoria
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      style={{ backdropFilter: 'blur(8px)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3"
+      style={{ backdropFilter: 'blur(8px)', overflowY: 'auto' }}
     >
       <motion.div
         initial={{ scale: 0.88, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         transition={{ type: 'spring', damping: 18, stiffness: 280 }}
-        className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#18181a] p-6 shadow-2xl"
+        className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#18181a] p-5 shadow-2xl my-3"
       >
         <div className="mb-5 text-center">
           <div className="text-3xl mb-1">⬡</div>
@@ -388,7 +388,7 @@ function SetupModal({ open, names: initNames, size: initSize, onStart, onTutoria
                 value={names[i]}
                 onChange={e => { const n = [...names] as [string, string]; n[i] = e.target.value.slice(0, 16); setNames(n) }}
                 placeholder={i === 0 ? 'Blue player (←→)' : 'Red player (↑↓)'}
-                className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/20 outline-none focus:border-white/25 transition-colors"
+                className="flex-1 rounded-lg bg-white/5 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/25 transition-colors min-h-[44px]"
               />
             </div>
           ))}
@@ -402,7 +402,7 @@ function SetupModal({ open, names: initNames, size: initSize, onStart, onTutoria
               <button
                 key={s}
                 onClick={() => setSize(s)}
-                className="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+                className="flex-1 py-3 rounded-lg text-xs font-bold transition-all min-h-[44px]"
                 style={{
                   border:     `1px solid ${size === s ? P1_COLOR : '#3a3a3c'}`,
                   background: size === s ? `${P1_COLOR}18` : 'transparent',
@@ -418,13 +418,13 @@ function SetupModal({ open, names: initNames, size: initSize, onStart, onTutoria
         <div className="flex gap-2">
           <button
             onClick={onTutorial}
-            className="py-3 px-4 rounded-xl text-xs font-bold border border-white/10 text-white/40 transition-all hover:border-white/20 hover:text-white/60"
+            className="py-3 px-4 rounded-xl text-xs font-bold border border-white/10 text-white/40 transition-all hover:border-white/20 hover:text-white/60 min-h-[44px]"
           >
             Tutorial
           </button>
           <button
             onClick={() => onStart(names, size)}
-            className="flex-1 py-3 rounded-xl font-extrabold uppercase tracking-widest text-sm text-white transition-all active:scale-95"
+            className="flex-1 py-3 rounded-xl font-extrabold uppercase tracking-widest text-sm text-white transition-all active:scale-95 min-h-[44px]"
             style={{ background: P1_COLOR, boxShadow: `0 4px 20px ${P1_COLOR}40` }}
           >
             Start Game
@@ -762,6 +762,8 @@ export function HexGame() {
       WebkitTapHighlightColor: 'transparent',
       userSelect:   'none',
       position:     'relative',
+      paddingLeft:  'env(safe-area-inset-left)',
+      paddingRight: 'env(safe-area-inset-right)',
     }}>
 
       {/* ── Modals ────────────────────────────────────────────────────────────── */}
@@ -821,11 +823,12 @@ export function HexGame() {
               key={s}
               onClick={() => { setBoardSize(s); setGame(createHexGame(s)); setHovered(null) }}
               style={{
-                width: 38, height: 28, borderRadius: 6, cursor: 'pointer',
+                minWidth: 40, height: 36, borderRadius: 6, cursor: 'pointer',
                 border:     `1px solid ${boardSize === s ? P1_COLOR : '#3a3a4c'}`,
                 background: boardSize === s ? `${P1_COLOR}22` : 'transparent',
                 color:      boardSize === s ? P1_COLOR : '#555',
-                fontSize: '0.58rem', fontWeight: 700, transition: 'all 0.15s',
+                fontSize: '0.6rem', fontWeight: 700, transition: 'all 0.15s',
+                padding: '0 6px',
               }}
             >
               {s}×{s}
@@ -911,7 +914,8 @@ export function HexGame() {
       <div style={{
         flex: 1, minHeight: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: '100%', padding: '4px 10px 8px',
+        width: '100%',
+        padding: '4px max(10px, env(safe-area-inset-left)) 8px max(10px, env(safe-area-inset-right))',
       }}>
         <HexBoard
           game={game}
@@ -935,7 +939,7 @@ export function HexGame() {
           <button
             onClick={() => { setGame(createHexGame(boardSize)); setHovered(null) }}
             style={{
-              padding: '7px 18px', borderRadius: 9999,
+              padding: '10px 18px', borderRadius: 9999, minHeight: 44,
               border: '1px solid #3a3a4c', background: 'transparent',
               color: '#555', fontSize: '0.68rem', fontWeight: 700,
               textTransform: 'uppercase', letterSpacing: '0.1em', cursor: 'pointer',
@@ -947,7 +951,7 @@ export function HexGame() {
           <button
             onClick={() => setShowTutorial(true)}
             style={{
-              padding: '7px 18px', borderRadius: 9999,
+              padding: '10px 18px', borderRadius: 9999, minHeight: 44,
               border: '1px solid #3a3a4c', background: 'transparent',
               color: '#555', fontSize: '0.68rem', fontWeight: 700,
               textTransform: 'uppercase', letterSpacing: '0.1em', cursor: 'pointer',
