@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <title>LEXLE — Word Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: { correct: '#538d4e', present: '#b59f3b', absent: '#3a3a3c' } } }
+    }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      --safe-top:    env(safe-area-inset-top,    0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left:   env(safe-area-inset-left,   0px);
+      --safe-right:  env(safe-area-inset-right,  0px);
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden; /* prevent iOS bounce scroll */
+    }
+
+    body {
+      background: #0f0f10;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent;
+      /* Respect notch / home-bar */
+      padding-top:    var(--safe-top);
+      padding-bottom: var(--safe-bottom);
+      padding-left:   var(--safe-left);
+      padding-right:  var(--safe-right);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Animations ─────────────────────────────────────────────── */
+    @keyframes pop         { 0%{transform:scale(1)} 50%{transform:scale(1.12)} 100%{transform:scale(1)} }
+    @keyframes shake       { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-3px)} 80%{transform:translateX(3px)} }
+    @keyframes tile-bounce { 0%,100%{transform:translateY(0)} 40%{transform:translateY(-18px)} 60%{transform:translateY(-9px)} }
+    @keyframes toast-in    { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes toast-out   { from{opacity:1} to{opacity:0} }
+    @keyframes modal-in    { from{opacity:0;transform:scale(0.88) translateY(16px)} to{opacity:1;transform:scale(1) translateY(0)} }
+    @keyframes spin        { to{transform:rotate(360deg)} }
+    @keyframes pulse-dot   { 0%,80%,100%{transform:scale(0);opacity:.5} 40%{transform:scale(1);opacity:1} }
+    @keyframes panel-in    { from{opacity:0;transform:scale(0.93) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+
+    .pop         { animation: pop 0.1s ease-out; }
+    .shake       { animation: shake 0.4s ease-out; }
+    .bounce      { animation: tile-bounce 0.5s ease-in-out both; }
+    .toast-enter { animation: toast-in  0.2s ease-out forwards; }
+    .toast-exit  { animation: toast-out 0.28s ease-in  forwards; }
+    .modal-enter { animation: modal-in  0.28s cubic-bezier(.34,1.56,.64,1) forwards; }
+    .panel-enter { animation: panel-in  0.2s ease-out forwards; }
+    .spinner     { animation: spin 0.8s linear infinite; }
+    .dot         { animation: pulse-dot 1.2s ease-in-out infinite both; }
+    .dot:nth-child(2){ animation-delay:.16s; }
+    .dot:nth-child(3){ animation-delay:.32s; }
+
+    .logo-text {
+      background: linear-gradient(135deg,#fff 30%,#818384 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    ::-webkit-scrollbar { display: none; }
+
+    /* ── Pill buttons (Settings) ────────────────────────────────── */
+    .pill {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 5px 12px; border-radius: 50px; border: 2px solid #3a3a3c;
+      background: transparent; color: #818384;
+      font-size: clamp(.7rem, 2.5vw, .8rem); font-weight: 700;
+      cursor: pointer; transition: all .15s; user-select: none;
+      white-space: nowrap;
+    }
+    .pill:hover          { border-color: #818384; color: #fff; }
+    .pill.active         { border-color: transparent; background: #538d4e; color: #fff; }
+    .pill.active-yellow  { border-color: transparent; background: #b59f3b; color: #fff; }
+    .pill.active-red     { border-color: transparent; background: #c84b4b; color: #fff; }
+
+    /* ── Scratchpad tile ────────────────────────────────────────── */
+    .scratch-tile {
+      border: 2px solid #3a3a3c; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; text-transform: uppercase;
+      cursor: pointer; color: #fff; background: transparent;
+      transition: border-color .1s; flex-shrink: 0;
+    }
+    .scratch-tile:hover    { border-color: #818384; }
+    .scratch-tile.focused  { border-color: #538d4e; background: #0f2b1e; }
+    .scratch-tile.has-letter { border-color: #565758; }
+
+    /* ── Modals scroll safely on mobile ─────────────────────────── */
+    .modal-scroll {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      max-height: calc(100vh - var(--safe-top) - var(--safe-bottom) - 32px);
+    }
+
+    /* ── Keyboard: prevent text selection on fast tap ────────────── */
+    #keyboard button { -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+
+    /* ── Scratchpad: full-width on narrow screens ────────────────── */
+    @media (max-width: 479px) {
+      #scratchpad {
+        left: 8px !important;
+        right: 8px !important;
+        width: auto !important;
+        /* top is managed by JS; bottom fallback */
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── LOADING ─────────────────────────────────────────────── -->
+<div id="loading-screen" class="fixed inset-0 z-[100] bg-[#0f0f10] flex flex-col items-center justify-center gap-6">
+  <h1 class="text-4xl font-extrabold tracking-[0.22em] uppercase logo-text">Lexle</h1>
+  <div class="flex flex-col items-center gap-3">
+    <div class="flex gap-2">
+      <div class="dot w-3 h-3 bg-correct rounded-full"></div>
+      <div class="dot w-3 h-3 bg-present rounded-full"></div>
+      <div class="dot w-3 h-3 bg-[#818384] rounded-full"></div>
+    </div>
+    <p id="loading-status" class="text-[#818384] text-sm tracking-wide">Fetching words…</p>
+  </div>
+</div>
+
+<!-- ── HEADER ──────────────────────────────────────────────── -->
+<header id="app-header" class="w-full max-w-[540px] flex items-center justify-between px-3 py-2 border-b border-[#3a3a3c] flex-shrink-0">
+  <div class="flex items-center gap-0.5">
+    <button id="btn-help" aria-label="How to play"
+      class="w-9 h-9 flex items-center justify-center rounded-lg text-[#818384] hover:text-white hover:bg-[#1a1a1c] transition-colors">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>
+    </button>
+    <button id="btn-settings" aria-label="Settings"
+      class="w-9 h-9 flex items-center justify-center rounded-lg text-[#818384] hover:text-white hover:bg-[#1a1a1c] transition-colors">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a6.94 6.94 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.47.47 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.37 1.04.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+    </button>
+  </div>
+
+  <div class="flex flex-col items-center min-w-0">
+    <h1 class="text-[clamp(1.1rem,5vw,1.5rem)] font-extrabold tracking-[0.22em] uppercase logo-text leading-tight">Lexle</h1>
+    <div class="flex items-center gap-1.5 mt-0.5 flex-wrap justify-center">
+      <span id="word-count-badge" class="hidden text-[9px] text-[#444] tracking-widest"></span>
+      <span id="hard-badge"     class="hidden text-[9px] font-bold uppercase tracking-widest text-[#c84b4b] border border-[#c84b4b] px-1.5 py-0.5 rounded-full">Hard</span>
+      <span id="category-badge" class="hidden text-[9px] font-bold uppercase tracking-widest text-[#b59f3b] border border-[#b59f3b] px-1.5 py-0.5 rounded-full"></span>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-0.5">
+    <button id="btn-scratch" aria-label="Scratchpad" title="Scratchpad"
+      class="w-9 h-9 flex items-center justify-center rounded-lg text-[#818384] hover:text-white hover:bg-[#1a1a1c] transition-colors">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+    </button>
+    <button id="btn-new" aria-label="New word" title="New word"
+      class="w-9 h-9 flex items-center justify-center rounded-lg bg-correct hover:bg-[#6aaf65] active:scale-95 transition-all text-white">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ── TOAST ───────────────────────────────────────────────── -->
+<div id="toast-wrap" class="w-full max-w-[540px] flex justify-center items-center pointer-events-none flex-shrink-0" style="height:36px;"></div>
+
+<!-- ── BOARD ───────────────────────────────────────────────── -->
+<main class="flex-1 flex items-center justify-center w-full min-h-0">
+  <div id="board" role="grid" aria-label="Game board" class="flex flex-col" style="gap:6px;"></div>
+</main>
+
+<!-- ── KEYBOARD ────────────────────────────────────────────── -->
+<div id="keyboard" aria-label="Keyboard" class="w-full max-w-[540px] flex-shrink-0 flex flex-col px-1" style="gap:5px; padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));"></div>
+
+<!-- ── VALIDATING OVERLAY ──────────────────────────────────── -->
+<div id="validating" class="hidden fixed inset-0 z-40 pointer-events-none flex items-start justify-center pt-16">
+  <div class="bg-[#1a1a1c] border border-[#3a3a3c] text-[#818384] text-xs font-bold px-4 py-2 rounded-full flex items-center gap-2">
+    <svg class="spinner w-3 h-3 text-present" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+    Checking word…
+  </div>
+</div>
+
+<!-- ── SETTINGS MODAL ──────────────────────────────────────── -->
+<div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  <div class="modal-scroll modal-enter bg-[#1a1a1c] border border-[#3a3a3c] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-base font-extrabold tracking-widest uppercase">Settings</h2>
+      <button id="settings-close" class="text-[#818384] hover:text-white transition-colors text-xl leading-none w-8 h-8 flex items-center justify-center">✕</button>
+    </div>
+
+    <!-- Word Length -->
+    <div class="mb-5">
+      <p class="text-xs font-bold uppercase tracking-widest text-[#818384] mb-2">Word Length</p>
+      <div class="flex gap-2 flex-wrap" id="length-pills">
+        <button class="pill" data-length="4">4 letters</button>
+        <button class="pill active" data-length="5">5 letters</button>
+        <button class="pill" data-length="6">6 letters</button>
+        <button class="pill" data-length="7">7 letters</button>
+      </div>
+    </div>
+
+    <!-- Difficulty -->
+    <div class="mb-5">
+      <p class="text-xs font-bold uppercase tracking-widest text-[#818384] mb-2">Difficulty</p>
+      <div class="flex gap-2 flex-wrap" id="diff-pills">
+        <button class="pill" data-diff="easy">Easy · 8 tries</button>
+        <button class="pill active" data-diff="normal">Normal · 6 tries</button>
+        <button class="pill" data-diff="hard">Hard · use hints</button>
+      </div>
+    </div>
+
+    <!-- Category -->
+    <div class="mb-6">
+      <p class="text-xs font-bold uppercase tracking-widest text-[#818384] mb-2">Category</p>
+      <div class="flex flex-wrap gap-2" id="cat-pills">
+        <button class="pill active" data-cat="any">🔀 Any</button>
+        <button class="pill" data-cat="animals">🐾 Animals</button>
+        <button class="pill" data-cat="countries">🌍 Countries</button>
+        <button class="pill" data-cat="fruits">🍎 Fruits</button>
+        <button class="pill" data-cat="foods">🍕 Foods</button>
+        <button class="pill" data-cat="sports">⚽ Sports</button>
+        <button class="pill" data-cat="colors">🎨 Colors</button>
+      </div>
+      <p id="cat-warning" class="hidden mt-2 text-xs text-[#c84b4b]"></p>
+    </div>
+
+    <button id="btn-apply" class="w-full bg-correct hover:bg-[#6aaf65] active:scale-95 text-white font-bold py-3 rounded-xl transition-all uppercase tracking-wide text-sm">
+      Apply &amp; New Game
+    </button>
+  </div>
+</div>
+
+<!-- ── HELP MODAL ──────────────────────────────────────────── -->
+<div id="help-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  <div class="modal-scroll modal-enter bg-[#1a1a1c] border border-[#3a3a3c] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-extrabold tracking-widest uppercase">How to Play</h2>
+      <button id="help-close" class="text-[#818384] hover:text-white text-xl w-8 h-8 flex items-center justify-center">✕</button>
+    </div>
+    <p class="text-[#ccc] text-sm mb-4 leading-relaxed">
+      Guess the <strong class="text-white">LEXLE</strong> in up to 6 tries. Each guess must be a real English word.
+    </p>
+    <div class="border-t border-[#3a3a3c] pt-4 flex flex-col gap-4">
+      <div>
+        <div class="flex gap-1.5 mb-1">
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-correct border-correct">W</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">E</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">A</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">R</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">Y</div>
+        </div>
+        <p class="text-[#aaa] text-xs"><strong class="text-white">W</strong> — correct spot.</p>
+      </div>
+      <div>
+        <div class="flex gap-1.5 mb-1">
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">P</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-present border-present">I</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">L</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">L</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">S</div>
+        </div>
+        <p class="text-[#aaa] text-xs"><strong class="text-white">I</strong> — in word, wrong spot.</p>
+      </div>
+      <div>
+        <div class="flex gap-1.5 mb-1">
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">V</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">A</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">G</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-absent border-absent">U</div>
+          <div class="w-9 h-9 border-2 rounded flex items-center justify-center text-white font-extrabold text-sm bg-[#3a3a3c] border-[#3a3a3c]">E</div>
+        </div>
+        <p class="text-[#aaa] text-xs"><strong class="text-white">U</strong> — not in word.</p>
+      </div>
+    </div>
+    <div class="border-t border-[#3a3a3c] mt-4 pt-3">
+      <p class="text-[#818384] text-xs font-bold mb-0.5">⚙ Hard Mode</p>
+      <p class="text-[#555] text-xs">Every guess must reuse all revealed green and yellow letters.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── GAME MODAL ──────────────────────────────────────────── -->
+<div id="game-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  <div id="game-modal-card" class="modal-scroll modal-enter bg-[#1a1a1c] border border-[#3a3a3c] rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl">
+    <div id="modal-emoji" class="text-5xl mb-3"></div>
+    <h2 id="modal-title" class="text-xl font-extrabold text-white mb-1"></h2>
+    <p id="modal-sub" class="text-[#818384] text-sm mb-4"></p>
+    <div id="modal-word" class="flex justify-center gap-1.5 mb-4 flex-wrap"></div>
+    <div id="modal-definition" class="mb-5 text-left bg-[#0f0f10] rounded-xl p-4 flex flex-col gap-3 min-h-[64px]">
+      <div id="modal-def-loading" class="flex items-center gap-2 text-[#555] text-xs">
+        <svg class="spinner w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        Loading definition…
+      </div>
+      <div id="modal-def-content" class="hidden flex flex-col gap-3"></div>
+    </div>
+    <button id="btn-next" class="w-full bg-correct hover:bg-[#6aaf65] active:scale-95 text-white font-bold text-sm py-3 rounded-xl transition-all tracking-wide uppercase">
+      Next Word →
+    </button>
+    <p class="text-[#555] text-xs mt-3">or tap outside to continue</p>
+  </div>
+</div>
+
+<!-- ── SCRATCHPAD FLOATING PANEL ───────────────────────────── -->
+<div id="scratchpad" class="hidden fixed z-30 bg-[#1a1a1c] border border-[#3a3a3c] rounded-2xl shadow-2xl"
+     style="bottom:80px; right:12px; max-width:calc(100vw - 24px);">
+  <div id="scratch-header"
+       class="flex items-center justify-between px-4 py-2.5 border-b border-[#3a3a3c] cursor-grab active:cursor-grabbing rounded-t-2xl select-none">
+    <div class="flex items-center gap-2">
+      <svg class="w-3.5 h-3.5 text-[#555]" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+      <span class="text-xs font-bold uppercase tracking-widest text-[#818384]">Scratchpad</span>
+    </div>
+    <button id="scratch-close" class="text-[#818384] hover:text-white text-lg leading-none transition-colors ml-4 w-7 h-7 flex items-center justify-center">✕</button>
+  </div>
+  <div id="scratch-rows" class="px-3 py-2.5 flex flex-col gap-2"></div>
+  <div class="px-3 pb-3">
+    <button id="scratch-add"
+      class="w-full flex items-center justify-center gap-1.5 border-2 border-dashed border-[#3a3a3c] hover:border-[#818384] rounded-xl py-2 text-[#555] hover:text-[#818384] text-sm font-bold transition-colors">
+      <span class="text-base leading-none">+</span> Add Row
+    </button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CATEGORY DATA
+// ═══════════════════════════════════════════════════════════════
+const CATEGORY_DATA = {
+  any:       { label:'Any',       emoji:'🔀', words:null },
+  animals:   { label:'Animals',   emoji:'🐾', words:{
+    4:['bear','boar','buck','bull','clam','colt','crab','crow','deer','dove','duck','fawn','flea','frog','gnat','hare','hawk','ibis','kite','lark','lion','lynx','mink','mole','moth','mule','newt','pike','pony','puma','slug','swan','toad','wasp','wolf','worm'],
+    5:['bison','camel','cobra','crane','dingo','eagle','egret','finch','gecko','goose','heron','hippo','horse','hyena','koala','llama','moose','mouse','otter','panda','quail','raven','robin','shark','sheep','skunk','sloth','snail','snake','squid','stork','tapir','tiger','trout','viper','whale','zebra'],
+    6:['badger','beaver','canary','cougar','coyote','donkey','falcon','ferret','gibbon','gopher','iguana','impala','jaguar','lizard','magpie','monkey','osprey','parrot','pigeon','puffin','python','rabbit','salmon','toucan','turtle','walrus','wombat'],
+    7:['buffalo','caribou','cheetah','dolphin','gazelle','gorilla','grizzly','hamster','leopard','lobster','manatee','narwhal','octopus','panther','peacock','pelican','penguin','piranha','raccoon','rooster','sparrow','vulture','wallaby'],
+  }},
+  countries: { label:'Countries', emoji:'🌍', words:{
+    4:['chad','cuba','fiji','iran','iraq','laos','mali','oman','peru','togo'],
+    5:['benin','chile','china','egypt','ghana','india','italy','japan','kenya','libya','nauru','nepal','niger','qatar','spain','sudan','syria','tonga','wales','yemen'],
+    6:['angola','belize','brazil','canada','france','greece','guinea','israel','jordan','kuwait','malawi','mexico','monaco','norway','panama','poland','russia','serbia','sweden','taiwan','turkey','uganda','zambia'],
+    7:['albania','algeria','andorra','armenia','austria','bahrain','belarus','belgium','bolivia','croatia','denmark','ecuador','finland','georgia','germany','hungary','iceland','ireland','jamaica','moldova','myanmar','namibia','nigeria','romania','senegal','somalia','ukraine','uruguay','vanuatu','vietnam'],
+  }},
+  fruits:    { label:'Fruits',    emoji:'🍎', words:{
+    4:['date','kiwi','lime','pear','plum'],
+    5:['apple','grape','guava','lemon','mango','melon','peach','prune'],
+    6:['banana','cherry','durian','lychee','orange','papaya','pomelo','quince','raisin'],
+    7:['apricot','avocado','coconut','kumquat','tangelo'],
+  }},
+  foods:     { label:'Foods',     emoji:'🍕', words:{
+    4:['beef','beet','bran','cake','clam','corn','crab','curd','dill','duck','eggs','herb','kale','lamb','leek','meat','milk','okra','rice','sage','soup','taco','tofu','tuna','veal','yolk'],
+    5:['bagel','bacon','bread','candy','chips','cocoa','cream','crepe','curry','donut','fudge','gravy','grits','honey','kebab','liver','mochi','nacho','onion','pasta','pizza','queso','salad','salsa','sauce','steak','sushi','syrup','taffy','tapas','toast','wafer'],
+    6:['burger','cereal','cheese','cookie','danish','fondue','hummus','kimchi','muffin','noodle','paella','phyllo','quiche','scones','sorbet','waffle','yogurt'],
+    7:['biscuit','brownie','cabbage','caramel','chicken','chorizo','granola','goulash','lasagna','oatmeal','pancake','popcorn','pretzel','risotto','sausage','strudel'],
+  }},
+  sports:    { label:'Sports',    emoji:'⚽', words:{
+    4:['golf','luge','polo','sumo','surf'],
+    5:['bocce','chess','darts','joust','relay','rodeo','rugby','skeet','track'],
+    6:['boxing','diving','hockey','karate','rowing','skiing','soccer','squash','tennis'],
+    7:['archery','bowling','cricket','cycling','fencing','fishing','hurdles','javelin','sailing','surfing','walking'],
+  }},
+  colors:    { label:'Colors',    emoji:'🎨', words:{
+    4:['blue','buff','cyan','ecru','fawn','gold','gray','grey','jade','lime','navy','onyx','pink','plum','rose','ruby','rust','sage','teal'],
+    5:['amber','azure','beige','black','blaze','brass','brick','brown','camel','cocoa','coral','cream','ebony','ember','green','hazel','honey','ivory','khaki','lilac','mauve','ocher','olive','peach','rouge','sepia','smoke','steel','straw','taupe','umber','white'],
+    6:['auburn','bisque','bistre','cerise','citron','claret','cobalt','copper','desert','fallow','flaxen','garnet','golden','indigo','jasper','laurel','madder','maroon','myrtle','orange','orchid','pewter','purple','raisin','russet','salmon','sienna','silver','sorrel','timber','violet','walnut','yellow'],
+    7:['apricot','chamois','crimson','fuchsia','magenta','mustard','scarlet','thistle'],
+  }},
+};
+
+// ═══════════════════════════════════════════════════════════════
+// API URLS & FALLBACK
+// ═══════════════════════════════════════════════════════════════
+const DATAMUSE_BASE   = 'https://api.datamuse.com/words?sp=';
+const DATAMUSE_SUFFIX = '&md=f&max=1000';
+const DICTIONARY_URL  = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
+
+const FALLBACK = {
+  4:['bear','belt','bird','bond','book','boot','calm','card','cave','code','coin','cool','core','dark','dart','dust','epic','face','fair','fall','fame','fast','fate','firm','fish','flag','fold','folk','font','ford','form','fort','free','fuel','full','fund','gain','gale','game','gate','gift','glow','goal','gold','gown','grin','grip','grow','gulf','gust','heal','heap','heat','heel','hero','hill','hint','hold','hole','holy','home','hope','horn','host','hour','hull','hunt','icon','idea','isle','jest','join','joke','jump','just','keen','kick','kind','king','knot','lace','lake','lamb','land','lane','lead','leaf','lean','leap','lend','link','lion','live','lock','loft','loop','lush','made','mark','mask','mast','maze','mean','meet','melt','mild','mill','mind','mint','mist','mode','moon','moor','move','myth','nail','name','need','nest','news','nine','node','norm','note'],
+  5:['about','above','acute','admit','adobe','adopt','adult','after','again','agile','alarm','album','alert','alive','alone','along','alter','angel','anger','angle','angry','apart','apple','apply','arena','arise','armor','aroma','array','attic','audio','audit','avoid','awake','award','aware','awful','baker','basic','batch','beach','began','begin','below','bench','birth','black','blade','blame','bland','blank','blast','blaze','blend','bless','blind','block','bloom','blown','board','boost','bound','boxer','brain','brand','brave','bread','break','breed','brick','bride','brief','bring','broad','broke','brook','broth','brown','brush','build','built','burst','buyer','cabin','carry','catch','cause','chair','chaos','charm','chart','chase','cheap','cheat','check','chess','chest','chief','child','choir','chunk','civil','clash','class','clean','clear','climb','clock','clone','close','cloth','cloud','comet','coral','count','crack','craft','crane','crash','cream','creek','crest','crime','crisp','cross','crown','crude','crush','cubic','curve','cycle','dance','death','decay','delta','depot','depth','digit','dirty','dodge','draft','drain','drama','dream','dress','drift','drink','drive','drone','dwarf'],
+  6:['abroad','absorb','accent','advice','afford','afraid','agency','agreed','alight','almost','amount','animal','annual','answer','appear','branch','bridge','bright','broken','budget','canvas','castle','cotton','course','create','crisis','debate','define','design','detail','divine','domain','double','driven','effect','effort','emerge','empire','engine','entire','equity','fabric','factor','famous','finish','flight','forest','formal','fossil','frozen','future','garden','gentle','global','golden','ground','growth','guided','happen','hidden','impact','import','income','insist','island','joined','jungle','keeper','launch','leader','league','legend','lonely','manage','margin','market','mirror','moment','moving','narrow','nearly','notice','number','object','obtain','office','option','origin','output','palace','parent','patent','person','planet','player','pocket','prince','profit','proper','purple','puzzle','reform'],
+  7:['abstain','account','achieve','acquire','ancient','another','awesome','balance','capable','century','chapter','climate','command','company','complex','compute','connect','content','context','control','country','courage','covered','culture','defense','develop','diagram','discuss','disease','diverse','edition','element','emotion','example','express','failure','feature','genuine','harvest','history','hundred','imagine','improve','include','initial','intense','involve','journey','justice','kingdom','knowing','largely','library','limited','minimum','miracle','mission','monster','natural','network','nothing','obvious','opinion','overall','passage','pattern','perfect','perhaps','popular','problem','product','program','protect','provide','purpose','quality','quickly','reality','receive','recover','reflect','regular','replace','request','require','resolve','restore','returns','science','silence','similar','society','someone','strange','subject','success','suppose','sustain','teacher','thought','through','totally','traffic','trouble','typical','uniform','upgrade','variety','various','version','village','waiting','welcome','whether','without'],
+};
+
+// ═══════════════════════════════════════════════════════════════
+// SETTINGS STATE
+// ═══════════════════════════════════════════════════════════════
+let wordLength = 5;
+let difficulty = 'normal';
+let category   = 'any';
+let maxGuesses = 6;
+
+// ═══════════════════════════════════════════════════════════════
+// WORD POOL STATE
+// ═══════════════════════════════════════════════════════════════
+let poolsByLength   = {};
+let usedWords       = new Set();
+let validationCache = new Map();
+let definitionCache = new Map();
+
+function setLoadingStatus(msg) {
+  const el = document.getElementById('loading-status');
+  if (el) el.textContent = msg;
+}
+
+// Pre-mark every word in every curated category list as valid so the
+// dictionary API is never called for proper nouns (Italy, India, etc.)
+function preCacheAllCategoryWords() {
+  for (const cat of Object.values(CATEGORY_DATA)) {
+    if (!cat.words) continue;
+    for (const wordList of Object.values(cat.words)) {
+      for (const w of wordList) validationCache.set(w.toLowerCase(), true);
+    }
+  }
+}
+
+async function fetchPoolForLength(len) {
+  if (poolsByLength[len]) return poolsByLength[len];
+  const sp = '?'.repeat(len);
+  setLoadingStatus(`Fetching ${len}-letter words…`);
+  try {
+    const res = await fetch(`${DATAMUSE_BASE}${sp}${DATAMUSE_SUFFIX}`);
+    if (!res.ok) throw new Error();
+    const data  = await res.json();
+    const words = data.map(w => w.word.toLowerCase()).filter(w => /^[a-z]+$/.test(w) && w.length === len);
+    if (words.length < 20) throw new Error('too few');
+    words.forEach(w => validationCache.set(w, true));
+    poolsByLength[len] = words;
+    return words;
+  } catch {
+    const fb = FALLBACK[len] || [];
+    poolsByLength[len] = [...fb];
+    fb.forEach(w => validationCache.set(w, true));
+    return poolsByLength[len];
+  }
+}
+
+function getAnswerPool() {
+  if (category !== 'any') {
+    const catWords = CATEGORY_DATA[category]?.words?.[wordLength] || [];
+    if (catWords.length >= 4) return catWords;
+  }
+  return poolsByLength[wordLength] || FALLBACK[wordLength] || [];
+}
+
+function getRandomWord() {
+  const pool = getAnswerPool();
+  const remaining = pool.filter(w => !usedWords.has(w));
+  const src = remaining.length ? remaining : pool;
+  if (!remaining.length) usedWords.clear();
+  const w = src[Math.floor(Math.random() * src.length)];
+  usedWords.add(w);
+  return w;
+}
+
+async function isValidWord(word) {
+  const lower = word.toLowerCase();
+  if (validationCache.has(lower)) return validationCache.get(lower);
+  try {
+    const res = await fetch(`${DICTIONARY_URL}${encodeURIComponent(lower)}`);
+    const ok = res.ok;
+    if (ok) { const d = await res.json(); definitionCache.set(lower, d); }
+    validationCache.set(lower, ok);
+    return ok;
+  } catch {
+    validationCache.set(lower, true);
+    return true;
+  }
+}
+
+function parseDef(data) {
+  if (!Array.isArray(data) || !data[0]?.meanings) return null;
+  const out = [];
+  for (const m of data[0].meanings) {
+    const d = m.definitions?.[0];
+    if (!d) continue;
+    out.push({ pos: m.partOfSpeech, definition: d.definition, example: d.example || null });
+    if (out.length >= 3) break;
+  }
+  return out.length ? out : null;
+}
+
+async function fetchDefinition(word) {
+  const lower = word.toLowerCase();
+  if (definitionCache.has(lower)) return parseDef(definitionCache.get(lower));
+  try {
+    const res = await fetch(`${DICTIONARY_URL}${encodeURIComponent(lower)}`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    definitionCache.set(lower, d);
+    return parseDef(d);
+  } catch { return null; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LAYOUT ENGINE  —  recomputed on resize / settings change
+// ═══════════════════════════════════════════════════════════════
+const KEYBOARD_ROWS = [
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['ENTER','Z','X','C','V','B','N','M','⌫'],
+];
+
+let L = {};   // current layout metrics
+
+function computeLayout() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const isMobile = vw < 480;
+
+  // Fixed chrome heights (px)
+  const headerH    = document.getElementById('app-header')?.offsetHeight || 52;
+  const toastH     = 36;
+  const kbRows     = 3;
+  const kbGap      = 5;
+  // Key height: clamp between 38px (tiny phones) and 58px
+  const keyH       = Math.max(38, Math.min(58, Math.floor(vh * 0.075)));
+  const kbTotalH   = kbRows * keyH + (kbRows - 1) * kbGap + 8; // +8 bottom pad
+  const vertBuffer = 12;
+
+  // Available board space
+  const availW = Math.min(vw, 540) - 24; // 12px side padding each side
+  const availH = vh - headerH - toastH - kbTotalH - vertBuffer;
+
+  // Tile size: satisfy both width and height constraints
+  const hGaps     = (wordLength - 1) * 6;
+  const vGaps     = (maxGuesses  - 1) * 6;
+  const fromWidth  = Math.floor((availW - hGaps) / wordLength);
+  const fromHeight = Math.floor((availH - vGaps) / maxGuesses);
+  const maxSizes   = { 4:70, 5:62, 6:52, 7:44 };
+  const tileSize   = Math.max(28, Math.min(fromWidth, fromHeight, maxSizes[wordLength]));
+
+  // Font size scales with tile (px, not rem — tileSize is in pixels)
+  const tileFontSize = Math.round(Math.max(14, tileSize * 0.47)) + 'px';
+
+  // Keyboard key font
+  const keyFontSize = Math.max(0.65, Math.min(0.85, vw / 480 * 0.85)) + 'rem';
+
+  // Scratchpad tile size
+  const scratchPanelW  = isMobile ? vw - 24 : Math.min(vw - 24, 360);
+  const scratchPad     = 24; // px padding each side
+  const scratchDelBtn  = 36;
+  const scratchGaps    = (wordLength - 1) * 4;
+  const scratchTileSz  = Math.max(26, Math.min(40, Math.floor((scratchPanelW - scratchPad * 2 - scratchDelBtn - scratchGaps) / wordLength)));
+
+  L = { tileSize, tileFontSize, keyH, keyFontSize, isMobile, scratchTileSz };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GAME STATE
+// ═══════════════════════════════════════════════════════════════
+const WIN_MSGS  = ['Genius!','Magnificent!','Impressive!','Splendid!','Great!','Phew!'];
+const POS_COLORS= { noun:'text-[#538d4e]', verb:'text-[#b59f3b]', adjective:'text-[#6196c8]', adverb:'text-[#a06cbf]' };
+
+let target      = '';
+let board       = [];
+let currentRow  = 0;
+let currentCol  = 0;
+let keyMap      = {};
+let status      = 'playing';
+let isRevealing = false;
+let isValidating= false;
+let hardCorrect = {};
+let hardPresent = new Set();
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — BOARD
+// ═══════════════════════════════════════════════════════════════
+function tileCSS(state) {
+  const sz = L.tileSize + 'px';
+  const base = `width:${sz};height:${sz};display:flex;align-items:center;justify-content:center;` +
+               `font-size:${L.tileFontSize};font-weight:800;text-transform:uppercase;` +
+               `border-radius:4px;border:2px solid;flex-shrink:0;`;
+  if (state==='correct') return base+'background:#538d4e;border-color:#538d4e;color:#fff;';
+  if (state==='present') return base+'background:#b59f3b;border-color:#b59f3b;color:#fff;';
+  if (state==='absent')  return base+'background:#3a3a3c;border-color:#3a3a3c;color:#555;';
+  if (state==='tbd')     return base+'background:transparent;border-color:#565758;color:#fff;';
+  return                        base+'background:transparent;border-color:#3a3a3c;color:#fff;';
+}
+
+function renderBoard() {
+  const el = document.getElementById('board');
+  el.innerHTML = '';
+  el.style.gap = '6px';
+  for (let r = 0; r < maxGuesses; r++) {
+    const row = document.createElement('div');
+    row.id = `row-${r}`;
+    row.style.cssText = 'display:flex;gap:6px;';
+    for (let c = 0; c < wordLength; c++) {
+      const t   = board[r]?.[c] || { letter:'', state:'empty' };
+      const div = document.createElement('div');
+      div.id = `tile-${r}-${c}`;
+      div.style.cssText = tileCSS(t.state);
+      div.textContent   = t.letter;
+      row.appendChild(div);
+    }
+    el.appendChild(row);
+  }
+}
+
+function updateTile(r, c) {
+  const el = document.getElementById(`tile-${r}-${c}`);
+  if (!el) return;
+  const t = board[r][c];
+  el.style.cssText  = tileCSS(t.state);
+  el.textContent    = t.letter;
+}
+
+function popTile(r, c) {
+  const el = document.getElementById(`tile-${r}-${c}`);
+  if (!el) return;
+  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  el.addEventListener('animationend', () => el.classList.remove('pop'), { once:true });
+}
+
+function shakeRow(r) {
+  const el = document.getElementById(`row-${r}`);
+  if (!el) return;
+  el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+  el.addEventListener('animationend', () => el.classList.remove('shake'), { once:true });
+}
+
+function bounceRow(r) {
+  for (let c = 0; c < wordLength; c++) {
+    const el = document.getElementById(`tile-${r}-${c}`);
+    if (!el) continue;
+    el.style.animationDelay = `${c * 75}ms`;
+    el.classList.remove('bounce'); void el.offsetWidth; el.classList.add('bounce');
+    el.addEventListener('animationend', () => { el.classList.remove('bounce'); el.style.animationDelay=''; }, { once:true });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER — KEYBOARD
+// ═══════════════════════════════════════════════════════════════
+function renderKeyboard() {
+  const kb = document.getElementById('keyboard');
+  kb.innerHTML = '';
+  KEYBOARD_ROWS.forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.style.cssText = 'display:flex;justify-content:center;gap:5px;';
+    row.forEach(key => {
+      const btn  = document.createElement('button');
+      const wide = key === 'ENTER' || key === '⌫';
+      const ks   = keyMap[key];
+      let bg='#818384', color='#fff';
+      if (ks==='correct')      bg='#538d4e';
+      else if (ks==='present') bg='#b59f3b';
+      else if (ks==='absent')  { bg='#3a3a3c'; color='#555'; }
+      btn.style.cssText =
+        `height:${L.keyH}px;border-radius:6px;font-weight:700;` +
+        `font-size:${L.keyFontSize};text-transform:uppercase;` +
+        `display:flex;align-items:center;justify-content:center;` +
+        `cursor:pointer;border:none;background:${bg};color:${color};` +
+        `transition:transform .07s, background .2s;touch-action:manipulation;` +
+        (wide ? 'min-width:56px;max-width:72px;flex:1.6;font-size:.7rem;'
+              : 'flex:1;min-width:24px;');
+      btn.textContent = key;
+      btn.addEventListener('click', () => handleGameKey(key));
+      rowEl.appendChild(btn);
+    });
+    kb.appendChild(rowEl);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg, persist=false) {
+  const wrap = document.getElementById('toast-wrap');
+  clearTimeout(toastTimer);
+  wrap.innerHTML = `<div class="toast-enter bg-white text-black font-bold text-xs px-4 py-2 rounded-full shadow-lg tracking-wide" role="alert" aria-live="polite">${msg}</div>`;
+  if (!persist) toastTimer = setTimeout(hideToast, 1800);
+}
+function hideToast() {
+  const wrap = document.getElementById('toast-wrap');
+  const t = wrap.firstChild; if (!t) return;
+  t.classList.replace('toast-enter','toast-exit');
+  t.addEventListener('animationend', () => { wrap.innerHTML=''; }, { once:true });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FLIP REVEAL
+// ═══════════════════════════════════════════════════════════════
+function revealRow(r, tiles, onDone) {
+  isRevealing = true;
+  let done = 0;
+  tiles.forEach((tile, c) => {
+    const el = document.getElementById(`tile-${r}-${c}`);
+    if (!el) return;
+    setTimeout(() => {
+      el.style.transition = 'transform .15s ease-in-out';
+      el.style.transform  = 'rotateX(-90deg)';
+      setTimeout(() => {
+        board[r][c] = tile;
+        el.style.cssText    = tileCSS(tile.state);
+        el.style.transition = 'transform .15s ease-in-out';
+        el.style.transform  = 'rotateX(0deg)';
+        el.textContent = tile.letter;
+        setTimeout(() => {
+          el.style.transition=''; el.style.transform='';
+          if (++done === wordLength) { isRevealing=false; onDone(); }
+        }, 155);
+      }, 155);
+    }, c * 300);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GAME MODAL
+// ═══════════════════════════════════════════════════════════════
+async function showGameModal(won, rowIdx) {
+  document.getElementById('modal-emoji').textContent = won ? '🎉' : '😔';
+  document.getElementById('modal-title').textContent = won ? 'You got it!' : 'Better luck next time';
+  document.getElementById('modal-sub').textContent   = won
+    ? `Solved in ${rowIdx} ${rowIdx===1?'guess':'guesses'}`
+    : 'The word was';
+
+  const wordEl = document.getElementById('modal-word');
+  wordEl.innerHTML = '';
+  const ts = Math.max(36, Math.min(48, Math.floor((Math.min(window.innerWidth,400)-32-(wordLength-1)*6)/wordLength)));
+  target.toUpperCase().split('').forEach(l => {
+    const d = document.createElement('div');
+    d.style.cssText = `width:${ts}px;height:${ts}px;background:#538d4e;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:${ts*0.45}px;font-weight:800;`;
+    d.textContent = l;
+    wordEl.appendChild(d);
+  });
+
+  document.getElementById('modal-def-loading').classList.remove('hidden');
+  document.getElementById('modal-def-content').classList.add('hidden');
+  document.getElementById('modal-def-content').innerHTML = '';
+
+  const card = document.getElementById('game-modal-card');
+  card.classList.remove('modal-enter'); void card.offsetWidth; card.classList.add('modal-enter');
+  document.getElementById('game-modal').classList.remove('hidden');
+
+  const meanings = await fetchDefinition(target);
+  document.getElementById('modal-def-loading').classList.add('hidden');
+  const contentEl = document.getElementById('modal-def-content');
+
+  if (!meanings) {
+    const searchQ = encodeURIComponent(`meaning of ${target}`);
+    contentEl.innerHTML = `
+      <p class="text-[#818384] text-xs italic mb-2">No definition found for "<strong class="text-white">${target}</strong>".</p>
+      <a href="https://www.google.com/search?q=${searchQ}" target="_blank" rel="noopener noreferrer"
+         class="inline-flex items-center gap-2 text-xs font-bold text-white bg-[#1e3a5f] hover:bg-[#1a4f8a] border border-[#2a5a9f] px-3 py-2 rounded-lg transition-colors">
+        <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"/></svg>
+        Search Google for "<span class="text-[#6fa8dc]">${target}</span>"
+      </a>`;
+  } else {
+    meanings.forEach(({ pos, definition, example }) => {
+      const wrap = document.createElement('div');
+      const pc   = POS_COLORS[pos] || 'text-[#818384]';
+      wrap.innerHTML = `
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-[10px] font-bold uppercase tracking-widest ${pc}">${pos}</span>
+          <div class="flex-1 h-px bg-[#2a2a2c]"></div>
+        </div>
+        <p class="text-[#ccc] text-sm leading-relaxed">${definition}</p>
+        ${example ? `<p class="text-[#555] text-xs italic mt-0.5">"${example}"</p>` : ''}`;
+      contentEl.appendChild(wrap);
+    });
+  }
+  contentEl.classList.remove('hidden');
+}
+function hideGameModal() { document.getElementById('game-modal').classList.add('hidden'); }
+
+// ═══════════════════════════════════════════════════════════════
+// GUESS EVALUATION
+// ═══════════════════════════════════════════════════════════════
+function evaluateGuess(guess, tgt) {
+  const g = guess.toUpperCase().split('');
+  const t = tgt.toUpperCase().split('');
+  const result = g.map(l => ({ letter:l, state:'absent' }));
+  const rem = [...t];
+  g.forEach((l,i) => { if (l===rem[i]) { result[i].state='correct'; rem[i]=''; } });
+  g.forEach((l,i) => {
+    if (result[i].state==='correct') return;
+    const idx = rem.indexOf(l);
+    if (idx!==-1) { result[i].state='present'; rem[idx]=''; }
+  });
+  return result;
+}
+
+function checkHardMode(word) {
+  const w = word.toUpperCase();
+  for (const [idx, letter] of Object.entries(hardCorrect)) {
+    if (w[idx] !== letter) return `Position ${+idx+1} must be ${letter}`;
+  }
+  for (const letter of hardPresent) {
+    if (!w.includes(letter)) return `Must include ${letter}`;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GAME INPUT
+// ═══════════════════════════════════════════════════════════════
+function handleGameKey(key) {
+  if (status!=='playing'||isRevealing||isValidating) return;
+  if (key==='ENTER')                      { submitGuess();    return; }
+  if (key==='⌫'||key==='BACKSPACE')       { deleteGameLetter(); return; }
+  if (/^[A-Z]$/.test(key)&&currentCol<wordLength) typeGameLetter(key);
+}
+
+function typeGameLetter(letter) {
+  board[currentRow][currentCol] = { letter, state:'tbd' };
+  updateTile(currentRow, currentCol);
+  popTile(currentRow, currentCol);
+  currentCol++;
+}
+
+function deleteGameLetter() {
+  if (currentCol===0) return;
+  currentCol--;
+  board[currentRow][currentCol] = { letter:'', state:'empty' };
+  updateTile(currentRow, currentCol);
+}
+
+async function submitGuess() {
+  if (currentCol<wordLength) { shakeRow(currentRow); showToast('Not enough letters'); return; }
+  const word = board[currentRow].map(t=>t.letter).join('').toLowerCase();
+  if (difficulty==='hard') {
+    const err = checkHardMode(word);
+    if (err) { shakeRow(currentRow); showToast(err); return; }
+  }
+  isValidating=true;
+  document.getElementById('validating').classList.remove('hidden');
+  const valid = await isValidWord(word);
+  document.getElementById('validating').classList.add('hidden');
+  isValidating=false;
+  if (!valid) { shakeRow(currentRow); showToast('Not in dictionary'); return; }
+
+  const tiles = evaluateGuess(word, target);
+  const won   = tiles.every(t=>t.state==='correct');
+
+  revealRow(currentRow, tiles, () => {
+    const rank = { correct:3, present:2, absent:1 };
+    tiles.forEach(({ letter, state }) => {
+      const prev = keyMap[letter];
+      if (!prev||rank[state]>rank[prev]) keyMap[letter]=state;
+    });
+    renderKeyboard();
+    if (difficulty==='hard') {
+      tiles.forEach(({ letter, state },i) => {
+        if (state==='correct') hardCorrect[i]=letter;
+        if (state==='present') hardPresent.add(letter);
+      });
+    }
+    currentRow++; currentCol=0;
+    if (won) {
+      status='won';
+      showToast(WIN_MSGS[Math.min(currentRow-1, WIN_MSGS.length-1)]);
+      bounceRow(currentRow-1);
+      setTimeout(() => showGameModal(true, currentRow), 1600);
+    } else if (currentRow>=maxGuesses) {
+      status='lost';
+      showToast(target.toUpperCase(), true);
+      setTimeout(() => showGameModal(false, currentRow), 1600);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RESET
+// ═══════════════════════════════════════════════════════════════
+function resetGame() {
+  target      = getRandomWord();
+  // Ensure the answer itself is always accepted (critical for proper nouns)
+  validationCache.set(target.toLowerCase(), true);
+  board       = Array.from({length:maxGuesses},()=>Array.from({length:wordLength},()=>({letter:'',state:'empty'})));
+  currentRow  = 0; currentCol=0;
+  keyMap      = {};
+  status      = 'playing';
+  isRevealing = false; isValidating=false;
+  hardCorrect = {}; hardPresent=new Set();
+  hideToast(); hideGameModal();
+  computeLayout();
+  renderBoard(); renderKeyboard();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCRATCHPAD
+// ═══════════════════════════════════════════════════════════════
+const MAX_SCRATCH_ROWS = 5;
+let scratchRows    = [];
+let roughFocus     = null;
+let scratchVisible = false;
+
+function openScratchpad() {
+  scratchVisible = true;
+  const p = document.getElementById('scratchpad');
+  p.classList.remove('hidden');
+  positionScratchpad(p);
+  p.classList.add('panel-enter');
+  p.addEventListener('animationend', () => p.classList.remove('panel-enter'), { once:true });
+  if (scratchRows.length === 0) addScratchRow();
+  else renderScratchpad();
+}
+
+function closeScratchpad() {
+  scratchVisible = false;
+  roughFocus = null;
+  document.getElementById('scratchpad').classList.add('hidden');
+}
+
+function positionScratchpad(panel) {
+  // On mobile: reset to default bottom position so it's always in view
+  if (L.isMobile) {
+    panel.style.top    = 'auto';
+    panel.style.left   = '8px';
+    panel.style.right  = '8px';
+    panel.style.bottom = '80px';
+    panel.style.width  = 'auto';
+  } else {
+    // Only reset if not already dragged by user
+    if (!panel.dataset.dragged) {
+      panel.style.top    = 'auto';
+      panel.style.left   = 'auto';
+      panel.style.right  = '12px';
+      panel.style.bottom = '90px';
+    }
+  }
+}
+
+function addScratchRow() {
+  if (scratchRows.length >= MAX_SCRATCH_ROWS) return;
+  scratchRows.push(Array(wordLength).fill(''));
+  renderScratchpad();
+}
+
+function deleteScratchRow(idx) {
+  scratchRows.splice(idx, 1);
+  if (roughFocus?.row===idx) roughFocus=null;
+  else if (roughFocus&&roughFocus.row>idx) roughFocus.row--;
+  renderScratchpad();
+}
+
+function renderScratchpad() {
+  const container = document.getElementById('scratch-rows');
+  container.innerHTML = '';
+  const sz = L.scratchTileSz;
+
+  scratchRows.forEach((tiles, ri) => {
+    const rowEl = document.createElement('div');
+    rowEl.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+    const tilesWrap = document.createElement('div');
+    tilesWrap.style.cssText = 'display:flex;gap:4px;flex:1;';
+
+    tiles.forEach((letter, ci) => {
+      const tile     = document.createElement('div');
+      const focused  = roughFocus?.row===ri && roughFocus?.col===ci;
+      tile.className = `scratch-tile${focused?' focused':''}${letter?' has-letter':''}`;
+      tile.style.cssText = `width:${sz}px;height:${sz}px;font-size:${Math.round(Math.max(11,sz*0.37))}px;`;
+      tile.textContent   = letter;
+      tile.addEventListener('click', e => { e.stopPropagation(); roughFocus={row:ri,col:ci}; renderScratchpad(); });
+      tilesWrap.appendChild(tile);
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.style.cssText = `width:28px;height:28px;border-radius:6px;border:none;background:#2a1a1a;color:#c84b4b;font-size:1rem;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .1s;touch-action:manipulation;`;
+    delBtn.innerHTML = '×';
+    delBtn.title = 'Delete row';
+    delBtn.addEventListener('click', () => deleteScratchRow(ri));
+    delBtn.addEventListener('pointerover', () => delBtn.style.background='#3a1a1a');
+    delBtn.addEventListener('pointerout',  () => delBtn.style.background='#2a1a1a');
+
+    rowEl.appendChild(tilesWrap);
+    rowEl.appendChild(delBtn);
+    container.appendChild(rowEl);
+  });
+
+  const addBtn = document.getElementById('scratch-add');
+  const atMax  = scratchRows.length >= MAX_SCRATCH_ROWS;
+  addBtn.style.opacity = atMax ? '0.35' : '1';
+  addBtn.style.cursor  = atMax ? 'not-allowed' : 'pointer';
+  addBtn.disabled = atMax;
+}
+
+function handleScratchKey(key) {
+  if (!roughFocus) return false;
+  const { row, col } = roughFocus;
+
+  if (/^[A-Z]$/.test(key)) {
+    scratchRows[row][col] = key;
+    roughFocus = col+1 < wordLength ? { row, col:col+1 } : { row, col };
+    renderScratchpad(); return true;
+  }
+  if (key==='BACKSPACE') {
+    if (scratchRows[row][col]) { scratchRows[row][col]=''; }
+    else if (col>0)            { roughFocus={row,col:col-1}; scratchRows[row][col-1]=''; }
+    renderScratchpad(); return true;
+  }
+  if (key==='ESCAPE') { roughFocus=null; renderScratchpad(); return true; }
+  if (key==='ENTER') {
+    const nextRow = row+1;
+    roughFocus = nextRow<scratchRows.length ? {row:nextRow,col:0} : null;
+    renderScratchpad(); return true;
+  }
+  return false;
+}
+
+// ── Drag & viewport clamping ─────────────────────────────────
+let isDragging=false, dragOffset={x:0,y:0};
+
+function initDrag() {
+  const panel  = document.getElementById('scratchpad');
+  const handle = document.getElementById('scratch-header');
+
+  function startDrag(cx, cy) {
+    if (L.isMobile) return; // no drag on mobile — it's anchored
+    isDragging = true;
+    panel.dataset.dragged = '1';
+    const rect = panel.getBoundingClientRect();
+    dragOffset = { x:cx-rect.left, y:cy-rect.top };
+    panel.style.bottom='auto'; panel.style.right='auto';
+    panel.style.left=`${rect.left}px`; panel.style.top=`${rect.top}px`;
+  }
+
+  function moveDrag(cx, cy) {
+    if (!isDragging) return;
+    const rect = panel.getBoundingClientRect();
+    const maxX = window.innerWidth  - rect.width;
+    const maxY = window.innerHeight - rect.height;
+    panel.style.left = `${Math.max(0, Math.min(cx - dragOffset.x, maxX))}px`;
+    panel.style.top  = `${Math.max(0, Math.min(cy - dragOffset.y, maxY))}px`;
+  }
+
+  handle.addEventListener('mousedown',  e => { e.preventDefault(); startDrag(e.clientX, e.clientY); });
+  handle.addEventListener('touchstart', e => { startDrag(e.touches[0].clientX, e.touches[0].clientY); }, { passive:true });
+  document.addEventListener('mousemove',  e => moveDrag(e.clientX, e.clientY));
+  document.addEventListener('touchmove',  e => moveDrag(e.touches[0].clientX, e.touches[0].clientY), { passive:true });
+  document.addEventListener('mouseup',  () => { isDragging=false; });
+  document.addEventListener('touchend', () => { isDragging=false; });
+}
+
+// Click outside scratchpad → clear tile focus
+document.addEventListener('click', e => {
+  if (!scratchVisible||!roughFocus) return;
+  if (!document.getElementById('scratchpad').contains(e.target)) {
+    roughFocus=null; renderScratchpad();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════════════
+let pendingLength = wordLength, pendingDiff = difficulty, pendingCat = category;
+
+function openSettings() {
+  pendingLength=wordLength; pendingDiff=difficulty; pendingCat=category;
+  syncSettingsPills();
+  document.getElementById('settings-modal').classList.remove('hidden');
+}
+function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
+
+function syncSettingsPills() {
+  document.querySelectorAll('#length-pills .pill').forEach(b => {
+    b.classList.toggle('active', +b.dataset.length===pendingLength);
+  });
+  document.querySelectorAll('#diff-pills .pill').forEach(b => {
+    b.classList.remove('active','active-yellow','active-red');
+    if (b.dataset.diff===pendingDiff) {
+      b.classList.add(pendingDiff==='hard' ? 'active-red' : 'active');
+    }
+  });
+  document.querySelectorAll('#cat-pills .pill').forEach(b => {
+    b.classList.toggle('active', b.dataset.cat===pendingCat);
+  });
+  validateCategoryWarning();
+}
+
+function validateCategoryWarning() {
+  const warn = document.getElementById('cat-warning');
+  if (pendingCat==='any') { warn.classList.add('hidden'); return; }
+  const catWords = CATEGORY_DATA[pendingCat]?.words?.[pendingLength]||[];
+  if (catWords.length<4) {
+    warn.textContent=`⚠ Not enough ${CATEGORY_DATA[pendingCat]?.label} words at length ${pendingLength}. Will fall back to Any.`;
+    warn.classList.remove('hidden');
+  } else { warn.classList.add('hidden'); }
+}
+
+async function applySettings() {
+  const lengthChanged = pendingLength!==wordLength;
+  wordLength=pendingLength; difficulty=pendingDiff; category=pendingCat;
+  maxGuesses = difficulty==='easy' ? 8 : 6;
+
+  const hardBadge = document.getElementById('hard-badge');
+  const catBadge  = document.getElementById('category-badge');
+  hardBadge.classList.toggle('hidden', difficulty!=='hard');
+  if (category!=='any') {
+    catBadge.textContent = CATEGORY_DATA[category]?.label||'';
+    catBadge.classList.remove('hidden');
+  } else { catBadge.classList.add('hidden'); }
+
+  if (lengthChanged && !poolsByLength[wordLength]) {
+    const applyBtn = document.getElementById('btn-apply');
+    applyBtn.textContent='Loading…'; applyBtn.disabled=true;
+    await fetchPoolForLength(wordLength);
+    applyBtn.textContent='Apply & New Game'; applyBtn.disabled=false;
+  }
+
+  // Reset scratchpad to new word length
+  scratchRows = scratchRows.map(() => Array(wordLength).fill(''));
+  roughFocus  = null;
+  const panel = document.getElementById('scratchpad');
+  delete panel.dataset.dragged; // reset drag position on settings change
+  if (scratchVisible) { positionScratchpad(panel); renderScratchpad(); }
+
+  closeSettings();
+  usedWords.clear();
+  resetGame();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// KEYBOARD ROUTING
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener('keydown', e => {
+  if (e.ctrlKey||e.metaKey||e.altKey) return;
+  const key = e.key==='Enter'     ? 'ENTER'
+            : e.key==='Backspace' ? 'BACKSPACE'
+            : e.key==='Escape'    ? 'ESCAPE'
+            : /^[a-zA-Z]$/.test(e.key) ? e.key.toUpperCase()
+            : null;
+  if (!key) return;
+  if (roughFocus!==null && scratchVisible && handleScratchKey(key)) return;
+  if (key!=='ESCAPE') handleGameKey(key);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// RESIZE / ORIENTATION  (debounced)
+// ═══════════════════════════════════════════════════════════════
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    computeLayout();
+    renderBoard();
+    renderKeyboard();
+    if (scratchVisible) {
+      const panel = document.getElementById('scratchpad');
+      if (L.isMobile) positionScratchpad(panel);
+      renderScratchpad();
+    }
+  }, 150);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// EVENT WIRING
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('btn-new').addEventListener('click',     () => { usedWords.clear(); resetGame(); });
+document.getElementById('btn-next').addEventListener('click',    () => { usedWords.clear(); resetGame(); });
+document.getElementById('btn-help').addEventListener('click',    () => document.getElementById('help-modal').classList.remove('hidden'));
+document.getElementById('help-close').addEventListener('click',  () => document.getElementById('help-modal').classList.add('hidden'));
+document.getElementById('help-modal').addEventListener('click',  e => { if(e.target===e.currentTarget) e.currentTarget.classList.add('hidden'); });
+document.getElementById('game-modal').addEventListener('click',  e => { if(e.target===e.currentTarget) resetGame(); });
+document.getElementById('btn-settings').addEventListener('click',openSettings);
+document.getElementById('settings-close').addEventListener('click',closeSettings);
+document.getElementById('settings-modal').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeSettings(); });
+
+document.querySelectorAll('#length-pills .pill').forEach(b => b.addEventListener('click',()=>{ pendingLength=+b.dataset.length; syncSettingsPills(); }));
+document.querySelectorAll('#diff-pills .pill').forEach(b   => b.addEventListener('click',()=>{ pendingDiff=b.dataset.diff; syncSettingsPills(); }));
+document.querySelectorAll('#cat-pills .pill').forEach(b    => b.addEventListener('click',()=>{ pendingCat=b.dataset.cat; syncSettingsPills(); }));
+document.getElementById('btn-apply').addEventListener('click', applySettings);
+
+document.getElementById('btn-scratch').addEventListener('click', () => scratchVisible ? closeScratchpad() : openScratchpad());
+document.getElementById('scratch-close').addEventListener('click', closeScratchpad);
+document.getElementById('scratch-add').addEventListener('click',  addScratchRow);
+
+initDrag();
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+(async () => {
+  computeLayout();
+  preCacheAllCategoryWords(); // mark all proper nouns etc. as valid before any API call
+
+  const pool = await fetchPoolForLength(wordLength);
+  const badge = document.getElementById('word-count-badge');
+  badge.textContent = `${pool.length} words`;
+  badge.classList.remove('hidden');
+
+  await new Promise(r => setTimeout(r, 500));
+  const ls = document.getElementById('loading-screen');
+  ls.style.transition='opacity .4s ease'; ls.style.opacity='0';
+  await new Promise(r => setTimeout(r, 400));
+  ls.remove();
+
+  resetGame();
+})();
+</script>
+</body>
+</html>
