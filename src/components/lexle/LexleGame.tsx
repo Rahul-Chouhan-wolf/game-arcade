@@ -560,6 +560,9 @@ export function LexleGame() {
 
       {/* Keyboard */}
       <div style={{ width: '100%', maxWidth: 540, flexShrink: 0, display: 'flex', flexDirection: 'column', padding: '0 4px', paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))', gap: 5 }}>
+        <div style={{ textAlign: 'right', fontSize: '0.42rem', color: '#666680', letterSpacing: '0.08em', paddingRight: 4, paddingBottom: 2 }}>
+          v1.0 · Rahul Chouhan
+        </div>
         <Keyboard
           keyMap={keyMap}
           keyH={layout.keyH}

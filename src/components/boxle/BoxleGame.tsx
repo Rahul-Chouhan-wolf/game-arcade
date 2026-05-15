@@ -23,162 +23,80 @@ const PLAYERS = {
 const DANGER_BG     = '#b59f3b14'
 const DANGER_STROKE = '#b59f3b50'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Engine (pure logic lives in lib/boxle/engine.ts) ────────────────────────
 
-type Owner  = 0 | 1 | 2   // 0 = unowned / undrawn
-type Player = 1 | 2
-
-/**
- * Full deterministic board state. Never mutated — replaced on each move.
- *
- * Box at (br, bc) has edges:
- *   top    = H[br][bc]
- *   bottom = H[br+1][bc]
- *   left   = V[br][bc]
- *   right  = V[br][bc+1]
- */
-interface GameState {
-  N: number           // dots per side  (N=5 → 4×4 grid → 16 boxes)
-  H: Owner[][]        // horizontal edges  H[row 0..N-1][col 0..N-2]
-  V: Owner[][]        // vertical edges    V[row 0..N-2][col 0..N-1]
-  B: Owner[][]        // box owners        B[row 0..N-2][col 0..N-2]
-  turn: Player
-  scores: [number, number]
-  done: boolean
-  winner: Player | null   // null on tie
-  extraTurn: boolean      // current player claimed ≥1 box → stays their turn
-  lastGained: number      // boxes claimed on the most-recent move (for +N badge)
-  newBoxes: string[]      // ordered keys of boxes claimed this move, e.g. "2-1"
-}
-
-// ─── Board helpers ────────────────────────────────────────────────────────────
-
-/** How many of the 4 edges of box (br, bc) are currently drawn? */
-function edgeCount(H: Owner[][], V: Owner[][], br: number, bc: number): number {
-  return (H[br    ][bc    ] !== 0 ? 1 : 0)   // top
-       + (H[br + 1][bc    ] !== 0 ? 1 : 0)   // bottom
-       + (V[br    ][bc    ] !== 0 ? 1 : 0)   // left
-       + (V[br    ][bc + 1] !== 0 ? 1 : 0)   // right
-}
-
-/**
- * Scan the board for any unowned box that has exactly 3 edges drawn.
- * Returns the coordinates of the one missing edge — drawing it completes the box.
- * Returns null when no such box exists (no auto-claim possible).
- */
-function findClaimableBox(
-  N: number, H: Owner[][], V: Owner[][], B: Owner[][]
-): { isH: boolean; r: number; c: number } | null {
-  for (let br = 0; br < N - 1; br++) {
-    for (let bc = 0; bc < N - 1; bc++) {
-      if (B[br][bc] !== 0) continue
-      if (edgeCount(H, V, br, bc) !== 3) continue
-      // Identify the one undrawn edge
-      if (H[br    ][bc    ] === 0) return { isH: true,  r: br,     c: bc     }
-      if (H[br + 1][bc    ] === 0) return { isH: true,  r: br + 1, c: bc     }
-      if (V[br    ][bc    ] === 0) return { isH: false, r: br,     c: bc     }
-      if (V[br    ][bc + 1] === 0) return { isH: false, r: br,     c: bc + 1 }
-    }
-  }
-  return null
-}
-
-function createGame(N: number): GameState {
-  return {
-    N,
-    H: Array.from({ length: N },     () => Array<Owner>(N - 1).fill(0)),
-    V: Array.from({ length: N - 1 }, () => Array<Owner>(N).fill(0)),
-    B: Array.from({ length: N - 1 }, () => Array<Owner>(N - 1).fill(0)),
-    turn:       1,
-    scores:     [0, 0],
-    done:       false,
-    winner:     null,
-    extraTurn:  false,
-    lastGained: 0,
-    newBoxes:   [],
-  }
-}
-
-/**
- * Pure reducer — place one line and return the next game state.
- *
- * Chain-capture rule (canonical Dots and Boxes):
- *   • If placing a line closes ≥1 box the player keeps their turn and may
- *     continue claiming chained boxes on the very next move — with no cap.
- *   • Turn only switches when a move produces zero completed boxes.
- *   • A single line can simultaneously close 2 adjacent boxes (scored together).
- *
- * Logic is resolved entirely here; UI animations only reflect final state.
- */
-function placeLine(prev: GameState, isH: boolean, r: number, c: number): GameState {
-  // Idempotent guard — already drawn lines are silently ignored
-  if (isH  && prev.H[r][c] !== 0) return prev
-  if (!isH && prev.V[r][c] !== 0) return prev
-
-  // Deep-clone all mutable arrays (keeps prev immutable)
-  const s: GameState = {
-    ...prev,
-    H:          prev.H.map(row => [...row] as Owner[]),
-    V:          prev.V.map(row => [...row] as Owner[]),
-    B:          prev.B.map(row => [...row] as Owner[]),
-    scores:     [...prev.scores] as [number, number],
-    extraTurn:  false,
-    lastGained: 0,
-    newBoxes:   [],   // reset every move; repopulated below in claim order
-  }
-
-  const p = s.turn
-  if (isH) s.H[r][c] = p
-  else     s.V[r][c] = p
-
-  // The (up to) 2 boxes that share this edge
-  const adjacent: [number, number][] = isH
-    ? [[r - 1, c], [r, c]]    // horizontal line → box above + box below
-    : [[r, c - 1], [r, c]]    // vertical line   → box left  + box right
-
-  let gained = 0
-  for (const [br, bc] of adjacent) {
-    // Skip out-of-bounds and already-owned boxes
-    if (br < 0 || bc < 0 || br >= s.N - 1 || bc >= s.N - 1) continue
-    if (s.B[br][bc] !== 0) continue
-
-    // Box is complete when all 4 edges are drawn (edgeCount uses updated s.H/V)
-    if (edgeCount(s.H, s.V, br, bc) === 4) {
-      s.B[br][bc]       = p
-      s.scores[p - 1]++
-      gained++
-      s.newBoxes.push(`${br}-${bc}`)   // record claim order for stagger animation
-    }
-  }
-
-  s.lastGained = gained
-
-  // ── Game-over check ───────────────────────────────────────────────────────
-  const totalBoxes = (s.N - 1) * (s.N - 1)
-  if (s.scores[0] + s.scores[1] >= totalBoxes) {
-    s.done   = true
-    s.winner = s.scores[0] > s.scores[1] ? 1
-             : s.scores[1] > s.scores[0] ? 2
-             : null
-    return s
-  }
-
-  // ── Chain-capture / turn-switch ───────────────────────────────────────────
-  // Claiming ≥1 box grants an extra turn (unlimited chain captures supported).
-  // Only switch when the move was "safe" (zero boxes completed).
-  if (gained > 0) {
-    s.extraTurn = true
-  } else {
-    s.turn = p === 1 ? 2 : 1
-  }
-
-  return s
-}
+import type { Owner, Player, GameState } from '@/lib/boxle/engine'
+import { edgeCount, findClaimableBox, createGame, placeLine } from '@/lib/boxle/engine'
 
 // ─── SVG coordinate helpers ───────────────────────────────────────────────────
 
 const dotX = (c: number) => PAD + c * CELL
 const dotY = (r: number) => PAD + r * CELL
+
+// ─── How to Play modal ────────────────────────────────────────────────────────
+
+function BoxleHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const rules = [
+    { icon: '✏️', title: 'Draw Lines', body: 'Players take turns clicking any undrawn edge between two adjacent dots to claim it.' },
+    { icon: '📦', title: 'Complete Boxes', body: 'If your line closes a box (completes the 4th side), you score that box and automatically claim any other completable boxes in the chain.' },
+    { icon: '🔁', title: 'Bonus Turn', body: 'After scoring, the chain continues until no more boxes can be completed — giving one player a potentially large streak.' },
+    { icon: '⚠️', title: 'Danger Boxes', body: 'Amber-tinted boxes have 3 sides drawn already. Avoid drawing the 3rd side of a box — it gifts a point to your opponent!' },
+    { icon: '🏆', title: 'Win Condition', body: 'The player with the most boxes when the board is full wins. Ties are possible.' },
+  ]
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ scale: 0.88, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            transition={{ type: 'spring', damping: 18, stiffness: 280 }}
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#18181a',
+              border: '1px solid #3a3a3c',
+              borderRadius: 20,
+              padding: '24px 24px 20px',
+              width: 'min(360px, calc(100vw - 32px))',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#538d4e' }}>
+                How to Play Boxle
+              </h2>
+              <button
+                onClick={onClose}
+                style={{ color: '#555', fontSize: '1.1rem', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+                className="hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {rules.map(r => (
+                <div key={r.title} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: '1.1rem', flexShrink: 0, marginTop: 1 }}>{r.icon}</span>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#e8e8e8', marginBottom: 2, letterSpacing: '0.05em' }}>{r.title}</div>
+                    <div style={{ fontSize: '0.65rem', color: '#888', lineHeight: 1.5 }}>{r.body}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -186,6 +104,7 @@ export function BoxleGame() {
   const [dotCount, setDotCount] = useState(5)
   const [game, setGame]         = useState<GameState>(() => createGame(5))
   const [hovered, setHovered]   = useState<string | null>(null)
+  const [showHelp, setShowHelp] = useState(false)
 
   // True while the engine is automatically cascading through a chain.
   // Blocks all manual input during the sequence.
@@ -321,8 +240,8 @@ export function BoxleGame() {
           Boxle
         </h1>
 
-        {/* Grid-size picker */}
-        <div style={{ display: 'flex', gap: 4 }}>
+        {/* Grid-size picker + help */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {([4, 5, 6] as const).map(n => (
             <button
               key={n}
@@ -339,8 +258,23 @@ export function BoxleGame() {
               {n - 1}×{n - 1}
             </button>
           ))}
+          <button
+            onClick={() => setShowHelp(true)}
+            aria-label="How to Play"
+            style={{
+              width: 28, height: 28, borderRadius: 6, cursor: 'pointer',
+              border: '1px solid #3a3a3c', background: 'transparent',
+              color: '#555', fontSize: '0.7rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            className="hover:border-white/30 hover:text-white transition-colors"
+          >
+            ?
+          </button>
         </div>
       </header>
+
+      <BoxleHelpModal open={showHelp} onClose={() => setShowHelp(false)} />
 
       {/* ══ SCORE BAR ════════════════════════════════════════════════════════ */}
       <div style={{
@@ -511,7 +445,7 @@ export function BoxleGame() {
               ) : (
                 /* ── Normal turn ── */
                 <span style={{ fontSize: '0.71rem', color: '#444' }}>
-                  {curPlayer.name}&rsquo;s turn — click a line
+                  {curPlayer.name}&rsquo;s turn — tap a line
                 </span>
               )}
             </motion.div>
@@ -530,7 +464,7 @@ export function BoxleGame() {
           style={{
             width: '100%',
             maxWidth: svgSize,
-            maxHeight: 'calc(100dvh - 220px)',  // never overflow the viewport
+            maxHeight: 'calc(100dvh - 220px - env(safe-area-inset-bottom, 0px))',
             height: 'auto',
             display: 'block',
             touchAction: 'manipulation',
@@ -715,8 +649,9 @@ export function BoxleGame() {
       <div style={{
         width: '100%', maxWidth: 520, flexShrink: 0,
         padding: '10px 16px',
+        paddingBottom: 'max(10px, env(safe-area-inset-bottom, 10px))',
         borderTop: '1px solid #3a3a3c',
-        display: 'flex', justifyContent: 'center',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
         <button
           onClick={reset}
@@ -730,6 +665,9 @@ export function BoxleGame() {
         >
           New Game
         </button>
+        <div style={{ fontSize: '0.44rem', color: '#666680', letterSpacing: '0.08em', textAlign: 'right' }}>
+          v1.0 · Rahul Chouhan
+        </div>
       </div>
 
       {/* ══ GAME-OVER OVERLAY ════════════════════════════════════════════════ */}
@@ -755,8 +693,10 @@ export function BoxleGame() {
               style={{
                 background: '#18181a',
                 border: `1px solid ${winner ? PLAYERS[winner].color + '50' : '#3a3a3c'}`,
-                borderRadius: 24, padding: '40px 48px',
-                textAlign: 'center', minWidth: 290,
+                borderRadius: 24,
+                padding: 'clamp(24px, 6vw, 40px) clamp(20px, 6vw, 48px)',
+                textAlign: 'center',
+                width: 'min(340px, calc(100vw - 32px))',
                 boxShadow: winner
                   ? `0 0 80px ${PLAYERS[winner].glow}, 0 24px 48px rgba(0,0,0,0.5)`
                   : '0 24px 48px rgba(0,0,0,0.5)',

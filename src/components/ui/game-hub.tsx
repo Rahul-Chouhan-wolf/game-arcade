@@ -21,6 +21,8 @@ interface Game {
   comingSoon?: boolean
   preview?: TileState[][]   // word-tile preview (Lexle)
   dotPreview?: boolean      // dots-and-boxes preview (Boxle)
+  goPreview?: boolean       // go board preview (Go)
+  hexPreview?: boolean      // hex board preview (Hexle)
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -50,8 +52,30 @@ const GAMES: Game[] = [
     accent: "#c77dff",
     href: "/boxle",
     isLive: true,
-    isNew: true,
     dotPreview: true,
+  },
+  {
+    id: "go",
+    name: "Go",
+    tagline: "Ancient strategy, modern arena",
+    description: "Place stones to claim territory. Connect groups for strength. Capture your rival's stones. Most territory wins.",
+    tags: ["Strategy", "2 Players", "Board"],
+    accent: "#e8b86d",
+    href: "/go",
+    isLive: true,
+    goPreview: true,
+  },
+  {
+    id: "hexle",
+    name: "Hexle",
+    tagline: "Connect your sides before they do",
+    description: "Take turns placing stones on a hex grid. Blue connects left to right. Red connects top to bottom. First path wins.",
+    tags: ["Strategy", "2 Players", "Hex"],
+    accent: "#22d3ee",
+    href: "/hexle",
+    isLive: true,
+    isNew: true,
+    hexPreview: true,
   },
 ]
 
@@ -171,6 +195,147 @@ function MiniBoard({ rows, accent }: { rows: TileState[][]; accent: string }) {
   )
 }
 
+// ── Go mini board preview ─────────────────────────────────────────────────────
+
+const GO_SIZE   = 5   // show a 5×5 sub-grid for the preview
+const GO_CELL   = 12
+const GO_PAD    = 8
+
+type GoMiniStone = { r: number; c: number; player: 1 | 2 }
+
+const GO_STONES: GoMiniStone[] = [
+  { r: 1, c: 1, player: 1 }, { r: 1, c: 3, player: 1 },
+  { r: 2, c: 2, player: 1 }, { r: 3, c: 1, player: 1 },
+  { r: 0, c: 2, player: 2 }, { r: 2, c: 0, player: 2 },
+  { r: 2, c: 4, player: 2 }, { r: 3, c: 3, player: 2 },
+  { r: 4, c: 2, player: 2 },
+]
+
+function GoMiniBoard() {
+  const total = 2 * GO_PAD + (GO_SIZE - 1) * GO_CELL
+  const x = (c: number) => GO_PAD + c * GO_CELL
+  const y = (r: number) => GO_PAD + r * GO_CELL
+
+  return (
+    <svg viewBox={`0 0 ${total} ${total}`} width={total} height={total}>
+      {/* Board background */}
+      <rect x={0} y={0} width={total} height={total} rx={4} fill="#1c1408" />
+      {/* Grid */}
+      {Array.from({ length: GO_SIZE }, (_, i) => (
+        <g key={i}>
+          <line x1={x(0)} y1={y(i)} x2={x(GO_SIZE - 1)} y2={y(i)} stroke="#5c3d1e" strokeWidth={0.8} />
+          <line x1={x(i)} y1={y(0)} x2={x(i)} y2={y(GO_SIZE - 1)} stroke="#5c3d1e" strokeWidth={0.8} />
+        </g>
+      ))}
+      {/* Stones */}
+      {GO_STONES.map((s, i) => (
+        <motion.circle
+          key={i}
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.3 + i * 0.07, type: 'spring', damping: 14, stiffness: 260 }}
+          style={{ transformOrigin: `${x(s.c)}px ${y(s.r)}px` }}
+          cx={x(s.c)} cy={y(s.r)}
+          r={GO_CELL * 0.42}
+          fill={s.player === 1 ? '#1a1a1a' : '#e8e8e8'}
+          stroke={s.player === 1 ? '#000' : '#b0b0b0'}
+          strokeWidth={0.5}
+        />
+      ))}
+    </svg>
+  )
+}
+
+// ── Hexle mini board preview ─────────────────────────────────────────────────
+
+const HEX_MINI_R  = 10
+const HEX_MINI_PAD = 14
+const HEX_MINI_N  = 5
+
+type HexMiniStone = { r: number; c: number; player: 1 | 2 }
+
+const HEX_MINI_STONES: HexMiniStone[] = [
+  { r: 0, c: 0, player: 1 }, { r: 1, c: 0, player: 1 }, { r: 1, c: 1, player: 1 },
+  { r: 2, c: 1, player: 1 }, { r: 2, c: 2, player: 1 },
+  { r: 0, c: 2, player: 2 }, { r: 0, c: 3, player: 2 }, { r: 1, c: 3, player: 2 },
+  { r: 3, c: 1, player: 2 }, { r: 3, c: 2, player: 2 },
+]
+
+function HexMiniBoard() {
+  const R   = HEX_MINI_R
+  const pad = HEX_MINI_PAD
+  const n   = HEX_MINI_N
+  const w   = Math.sqrt(3) * R
+  const svgW = pad + (n - 1) * 1.5 * w + w / 2 + pad
+  const svgH = pad + (n - 1) * 1.5 * R + R + pad
+
+  function hexPts(cx: number, cy: number) {
+    const pts: string[] = []
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 6
+      pts.push(`${cx + R * Math.cos(a)},${cy + R * Math.sin(a)}`)
+    }
+    return pts.join(' ')
+  }
+
+  const cx = (r: number, c: number) => pad + c * w + r * w * 0.5
+  const cy = (r: number, c: number) => pad + r * 1.5 * R
+
+  const WIN_CELLS = new Set(['0,0','1,0','1,1','2,1','2,2'])
+
+  return (
+    <svg viewBox={`0 0 ${svgW} ${svgH}`} width={svgW} height={svgH}>
+      <defs>
+        <radialGradient id="hm-p1" cx="35%" cy="30%" r="65%">
+          <stop offset="0%" stopColor="#7dd3fc" /><stop offset="100%" stopColor="#0369a1" />
+        </radialGradient>
+        <radialGradient id="hm-p2" cx="35%" cy="30%" r="65%">
+          <stop offset="0%" stopColor="#fca5a5" /><stop offset="100%" stopColor="#9f1239" />
+        </radialGradient>
+      </defs>
+      <rect x={0} y={0} width={svgW} height={svgH} rx={4} fill="#0a0a12" />
+      {Array.from({ length: n }, (_, r) =>
+        Array.from({ length: n }, (_, c) => {
+          const isLR = c === 0 || c === n - 1
+          const isTB = r === 0 || r === n - 1
+          const fill = (isLR && isTB) ? '#0e0e1e' : isLR ? '#081828' : isTB ? '#1e0810' : '#0f0f1a'
+          return (
+            <polygon
+              key={`${r}-${c}`}
+              points={hexPts(cx(r, c), cy(r, c))}
+              fill={fill} stroke="#1e1e30" strokeWidth={0.5}
+            />
+          )
+        })
+      )}
+      {WIN_CELLS.size > 0 && Array.from(WIN_CELLS).map((key, i) => {
+        const [r, c] = key.split(',').map(Number)
+        return (
+          <motion.polygon
+            key={key}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 + i * 0.07 }}
+            points={hexPts(cx(r, c), cy(r, c))}
+            fill="#e8b86d30" stroke="#e8b86d50" strokeWidth={0.8}
+          />
+        )
+      })}
+      {HEX_MINI_STONES.map((s, i) => (
+        <motion.circle
+          key={i}
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.25 + i * 0.06, type: 'spring', damping: 14, stiffness: 280 }}
+          style={{ transformOrigin: `${cx(s.r, s.c)}px ${cy(s.r, s.c)}px` }}
+          cx={cx(s.r, s.c)} cy={cy(s.r, s.c)}
+          r={R * 0.44}
+          fill={`url(#hm-p${s.player})`}
+        />
+      ))}
+    </svg>
+  )
+}
+
 // ── Single game card ──────────────────────────────────────────────────────────
 
 function GameCard({ game, index }: { game: Game; index: number }) {
@@ -179,7 +344,7 @@ function GameCard({ game, index }: { game: Game; index: number }) {
       initial={{ opacity: 0, y: 32 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 + index * 0.12, duration: 0.5, ease: "easeOut" }}
-      className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 p-5 flex gap-5 items-start transition-all duration-300 hover:border-white/20 hover:bg-black/50"
+      className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 p-4 sm:p-5 flex gap-4 sm:gap-5 items-start transition-all duration-300 hover:border-white/20 hover:bg-black/50"
       style={{ backdropFilter: "blur(20px)" }}
     >
       {/* accent glow on hover */}
@@ -190,7 +355,11 @@ function GameCard({ game, index }: { game: Game; index: number }) {
 
       {/* ── Mini board ── */}
       <div className="flex-shrink-0 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 p-3">
-        {game.dotPreview
+        {game.hexPreview
+          ? <HexMiniBoard />
+          : game.goPreview
+          ? <GoMiniBoard />
+          : game.dotPreview
           ? <BoxMiniBoard />
           : <MiniBoard rows={game.preview ?? []} accent={game.accent} />
         }
@@ -244,8 +413,11 @@ function GameCard({ game, index }: { game: Game; index: number }) {
         ) : (
           <Link
             href={game.href ?? "#"}
-            className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-extrabold uppercase tracking-widest text-white transition-all duration-200
-              bg-[#538d4e] hover:bg-[#6aaf65] active:scale-95 shadow-lg shadow-[#538d4e]/30 hover:shadow-[#538d4e]/50"
+            className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-extrabold uppercase tracking-widest text-white transition-all duration-200 active:scale-95 shadow-lg"
+            style={{
+              background: game.accent,
+              boxShadow: `0 4px 20px ${game.accent}40`,
+            }}
           >
             <Play className="w-3.5 h-3.5 fill-white" />
             Play Now
@@ -312,9 +484,10 @@ export function GameHub() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.8, duration: 0.6 }}
-        className="mt-10 text-[10px] uppercase tracking-[0.3em] text-white/15"
+        className="mt-10 flex flex-col items-center gap-1"
       >
-        Powered by Lexle Engine
+        <span className="text-[10px] uppercase tracking-[0.3em] text-white/30">v1.0 · Game Arcade</span>
+        <span className="text-[9px] tracking-[0.15em] text-white/25">Created by Rahul Chouhan</span>
       </motion.p>
     </div>
   )
