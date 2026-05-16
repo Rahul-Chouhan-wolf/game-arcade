@@ -25,6 +25,7 @@ interface Game {
   dotPreview?: boolean      // dots-and-boxes preview (Boxle)
   goPreview?: boolean       // go board preview (Go)
   hexPreview?: boolean      // hex board preview (Hexle)
+  neonPreview?: boolean     // neon drift preview
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -80,8 +81,19 @@ const GAMES: Game[] = [
     href: "/hexle",
     learnHref: "/learn/hexle",
     isLive: true,
-    isNew: true,
     hexPreview: true,
+  },
+  {
+    id: "neon-drift",
+    name: "Neon Drift",
+    tagline: "Race the neon night",
+    description: "Synthwave cyberpunk arcade racing. Drift through glowing highways, chase the perfect line, and climb the leaderboard.",
+    tags: ["Racing", "Solo", "Synthwave"],
+    accent: "#c026d3",
+    href: "/neon-drift",
+    isLive: true,
+    isNew: true,
+    neonPreview: true,
   },
 ]
 
@@ -342,6 +354,71 @@ function HexMiniBoard() {
   )
 }
 
+// ── Neon Drift mini preview ───────────────────────────────────────────────────
+
+function NeonMiniPreview({ accent }: { accent: string }) {
+  const W = 58, H = 58
+  const VPX = W / 2, VPY = H * 0.42
+  // Pre-baked grid lines (5 horizontal + 5 vertical)
+  const hLines = Array.from({ length: 5 }, (_, i) => {
+    const t = ((i + 1) / 6) ** 2
+    const y = VPY + (H - VPY) * t
+    const spread = t * 0.8
+    return { y, x1: VPX - spread * W * 0.75, x2: VPX + spread * W * 0.75, op: Math.min(t * 2, 0.7) }
+  })
+  const vLines = [-2, -1, 0, 1, 2].map(i => ({
+    x2: VPX + (i / 2) * W * 0.75,
+  }))
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
+      <defs>
+        <linearGradient id="nd-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#020012" />
+          <stop offset="100%" stopColor="#1a0040" />
+        </linearGradient>
+        <radialGradient id="nd-sun" cx="50%" cy="100%" r="100%">
+          <stop offset="0%" stopColor="#f97316" />
+          <stop offset="50%" stopColor={accent} />
+          <stop offset="100%" stopColor="#020012" />
+        </radialGradient>
+      </defs>
+      {/* Sky */}
+      <rect x={0} y={0} width={W} height={VPY} fill="url(#nd-sky)" />
+      {/* Sun */}
+      <circle cx={VPX} cy={VPY - 1} r={8} fill="url(#nd-sun)" opacity="0.9" />
+      {/* Sun scanlines */}
+      {[0, 2, 4].map(dy => (
+        <line key={dy} x1={VPX - 8} y1={VPY - 8 + dy} x2={VPX + 8} y2={VPY - 8 + dy}
+          stroke="#020012" strokeWidth="0.9" />
+      ))}
+      {/* Horizon */}
+      <line x1={0} y1={VPY} x2={W} y2={VPY} stroke={accent} strokeWidth="0.8" opacity="0.7" />
+      {/* Ground */}
+      <rect x={0} y={VPY} width={W} height={H - VPY} fill="#050510" />
+      {/* Grid horizontals */}
+      {hLines.map((l, i) => (
+        <line key={i} x1={l.x1} y1={l.y} x2={l.x2} y2={l.y}
+          stroke={accent} strokeWidth={0.6 + i * 0.2} opacity={l.op} />
+      ))}
+      {/* Grid verticals */}
+      {vLines.map((v, i) => (
+        <line key={i} x1={VPX} y1={VPY} x2={v.x2} y2={H}
+          stroke={accent} strokeWidth="0.5" opacity="0.4" />
+      ))}
+      {/* Centre road stripe */}
+      <motion.line
+        x1={VPX} y1={VPY + 4} x2={VPX} y2={H}
+        stroke={accent} strokeWidth="1.2" opacity="0.7"
+        strokeDasharray="4 5"
+        animate={{ strokeDashoffset: [0, -18] }}
+        transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+      />
+      {/* Glow dot */}
+      <circle cx={VPX} cy={VPY} r={3} fill={accent} opacity="0.5" />
+    </svg>
+  )
+}
+
 // ── Single game card ──────────────────────────────────────────────────────────
 
 function GameCard({ game, index }: { game: Game; index: number }) {
@@ -361,7 +438,9 @@ function GameCard({ game, index }: { game: Game; index: number }) {
 
       {/* ── Mini board ── */}
       <div className="flex-shrink-0 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 p-3">
-        {game.hexPreview
+        {game.neonPreview
+          ? <NeonMiniPreview accent={game.accent} />
+          : game.hexPreview
           ? <HexMiniBoard />
           : game.goPreview
           ? <GoMiniBoard />
