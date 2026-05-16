@@ -11,7 +11,7 @@ export interface CelestialBody {
   mass:    number   // gravitational mass (arbitrary units)
   radius:  number   // collision + visual radius (world px)
   type:    BodyType
-  fixed:   boolean  // bodies are always fixed for determinism
+  fixed:   boolean
 }
 
 export interface Projectile {
@@ -22,18 +22,54 @@ export interface Projectile {
   radius:   number
   trail:    readonly { x: number; y: number }[]
   alive:    boolean
-  absorbed: boolean  // eaten by black hole or planet
+  absorbed: boolean
+}
+
+// ─── Asteroid definition ───────────────────────────────────────────────────────
+// Asteroids follow deterministic circular orbits — no physics integration needed.
+// Their position is computed analytically from game time, guaranteeing stability.
+
+export interface AsteroidDef {
+  id:           number
+  centerX:      number   // world-space orbit centre
+  centerY:      number
+  orbitRadius:  number   // distance from centre
+  speed:        number   // rad / s (positive = CCW, negative = CW)
+  phase:        number   // initial angle (radians)
+  radius:       number   // visual + collision radius (world px)
+}
+
+/** Compute asteroid world-space position at time t (deterministic). */
+export function asteroidPos(def: AsteroidDef, t: number): { x: number; y: number } {
+  const a = def.phase + def.speed * t
+  return {
+    x: def.centerX + Math.cos(a) * def.orbitRadius,
+    y: def.centerY + Math.sin(a) * def.orbitRadius,
+  }
+}
+
+/** True if the projectile collides with the asteroid at time t. */
+export function asteroidHit(
+  def: AsteroidDef,
+  proj: Projectile,
+  t: number,
+): boolean {
+  const pos  = asteroidPos(def, t)
+  const dx   = proj.x - pos.x
+  const dy   = proj.y - pos.y
+  const minR = def.radius + proj.radius
+  return dx * dx + dy * dy < minR * minR
 }
 
 // ─── Physics constants ────────────────────────────────────────────────────────
 
-export const G             = 800     // gravitational constant (game units²/s²)
-export const MAX_SPEED     = 680     // px/s — hard velocity cap
-export const SUBSTEPS      = 8       // physics sub-steps per frame
-export const TRAIL_MAX     = 140     // max trail history length
-export const DRAG_TO_VEL   = 6.0    // screen-px drag → world-px/s launch velocity
-export const MAX_LAUNCH_V  = 600     // max launch speed (px/s)
-export const BOUNDS        = 1400    // world units — escape distance from origin
+export const G             = 800
+export const MAX_SPEED     = 680
+export const SUBSTEPS      = 8
+export const TRAIL_MAX     = 140
+export const DRAG_TO_VEL   = 6.0
+export const MAX_LAUNCH_V  = 600
+export const BOUNDS        = 1500
 
 // ─── Projectile factory ───────────────────────────────────────────────────────
 
@@ -44,8 +80,6 @@ export function makeProjectile(
 }
 
 // ─── Core physics step ────────────────────────────────────────────────────────
-// Symplectic Euler: integrate velocity first, then position.
-// This is energy-conserving for orbital mechanics — far superior to naive Euler.
 
 export function stepProjectile(
   proj:   Projectile,
@@ -68,19 +102,16 @@ export function stepProjectile(
       const r2 = dx * dx + dy * dy
       const r  = Math.sqrt(r2)
 
-      // Black-hole absorption
       if (body.type === 'blackhole' && r < body.radius * 0.55) {
         absorbed = true; break outer
       }
-      // Solid-body collision (planet / star / neutronstar)
       if (body.type !== 'blackhole' && r < body.radius + proj.radius) {
         absorbed = true; break outer
       }
 
-      // Softened gravity prevents the singularity at r→0.
-      // Force magnitude ∝ G·M / (r² + ε²) where ε = radius × 0.30
-      const eps  = body.radius * 0.30
-      const soft = r2 + eps * eps
+      // Softened gravity — prevents singularity at r→0
+      const eps   = body.radius * 0.30
+      const soft  = r2 + eps * eps
       const force = G * body.mass / soft
       ax += force * dx / r
       ay += force * dy / r
@@ -88,21 +119,19 @@ export function stepProjectile(
 
     if (absorbed) break
 
-    // ── Symplectic Euler ──────────────────────────────────────────────────────
+    // Symplectic Euler: velocity first, then position
     vx += ax * subDt
     vy += ay * subDt
 
-    // Hard speed cap — prevents runaway near singularities
-    const spd = vx * vx + vy * vy
-    if (spd > MAX_SPEED * MAX_SPEED) {
-      const sc = MAX_SPEED / Math.sqrt(spd)
+    const spd2 = vx * vx + vy * vy
+    if (spd2 > MAX_SPEED * MAX_SPEED) {
+      const sc = MAX_SPEED / Math.sqrt(spd2)
       vx *= sc; vy *= sc
     }
 
     x += vx * subDt
     y += vy * subDt
 
-    // NaN guard (should never trigger with softening, but be defensive)
     if (!isFinite(x) || !isFinite(y)) {
       return { ...proj, alive: false, absorbed: true }
     }
@@ -116,29 +145,41 @@ export function stepProjectile(
 }
 
 // ─── Trajectory preview ───────────────────────────────────────────────────────
-// Runs the exact same integration ahead in time and returns sampled positions.
-// Because it uses the same math as the real sim, the preview is perfectly accurate.
+// Returns sampled future positions + which step (if any) the probe hits an asteroid.
+// Because we use the same integration, the preview is perfectly accurate.
 
 export function previewTrajectory(
-  startX:  number,
-  startY:  number,
-  startVx: number,
-  startVy: number,
-  bodies:  readonly CelestialBody[],
-  steps       = 280,
+  startX:     number,
+  startY:     number,
+  startVx:    number,
+  startVy:    number,
+  bodies:     readonly CelestialBody[],
+  asteroids:  readonly AsteroidDef[],
+  gameTime:   number,
+  steps       = 300,
   dtPerStep   = 0.016,
   sampleEvery = 3,
-): { x: number; y: number }[] {
+): { path: { x: number; y: number }[]; asteroidHitStep: number | null } {
   let proj = makeProjectile(startX, startY, startVx, startVy)
   const path: { x: number; y: number }[] = []
+  let asteroidHitStep: number | null = null
 
   for (let i = 0; i < steps; i++) {
     proj = stepProjectile(proj, bodies, dtPerStep)
     if (!proj.alive) break
+
+    // Check asteroid collision at this simulated time
+    const simT = gameTime + i * dtPerStep
+    for (const ast of asteroids) {
+      if (asteroidHitStep === null && asteroidHit(ast, proj, simT)) {
+        asteroidHitStep = i
+      }
+    }
+
     if (i % sampleEvery === 0) path.push({ x: proj.x, y: proj.y })
   }
 
-  return path
+  return { path, asteroidHitStep }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
