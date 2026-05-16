@@ -25,7 +25,7 @@ interface TrafficCar {
   id: number; x: number; y: number; heading: number; speed: number; passed: boolean
 }
 
-interface Camera { x: number; y: number; heading: number }
+interface Camera { x: number; y: number; heading: number; bank: number }
 
 interface FloatNotif {
   id: number; text: string; pts: number; x: number; y: number
@@ -198,8 +198,8 @@ function drawHighwayRoad(ctx: CanvasRenderingContext2D, segments: RoadSegment[],
   ctx.fillStyle = "#0d0d1f"
   ctx.fill()
 
-  // Drift zone tint
-  const driftSegs = segments.filter(s => s.type === "drift-zone")
+  // Drift zone + sweeper tint
+  const driftSegs = segments.filter(s => s.type === "drift-zone" || s.type === "sweeper")
   if (driftSegs.length > 1) {
     for (let i = 0; i < driftSegs.length - 1; i++) {
       const a = driftSegs[i], b = driftSegs[i + 1]
@@ -406,48 +406,94 @@ function drawParticles(ctx: CanvasRenderingContext2D, particles: Particle[]) {
 // ─── Screen-space FX ─────────────────────────────────────────────────────────
 
 function drawSpeedLines(ctx: CanvasRenderingContext2D, W: number, H: number, speed: number, palette: NeonPalette, t: number) {
-  const intensity = Math.max(0, (speed - 160) / 300)
+  const intensity = Math.max(0, (speed - 130) / 330)
   if (intensity < 0.01) return
   ctx.save()
-  const cx = W / 2, cy = H / 2
-  for (let i = 0; i < 16; i++) {
-    const angle = (i / 16) * Math.PI * 2 + t * 0.18
-    const dist  = 90 + ((i * 43 + t * 130) % (Math.max(W, H) * 0.6))
-    const len   = 35 + intensity * 160
-    const g = ctx.createLinearGradient(
-      cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist,
-      cx + Math.cos(angle) * (dist + len), cy + Math.sin(angle) * (dist + len),
-    )
+
+  // Vanishing point in upper portion of screen (where road horizon is with the new camera)
+  const vpx = W / 2, vpy = H * 0.22
+
+  for (let i = 0; i < 22; i++) {
+    // Spread streaks radially from vanishing point, biased toward lower screen (where car is)
+    const baseAngle = (i / 22) * Math.PI * 2
+    // Offset streaks so they're denser in the lower/peripheral area
+    const radius0 = H * 0.28 + ((i * 67 + Math.floor(t * 90 + i * 7)) % (H * 0.62))
+    const radius1 = radius0 + 28 + intensity * 150
+
+    const x0 = vpx + Math.cos(baseAngle) * radius0
+    const y0 = vpy + Math.sin(baseAngle) * radius0
+    const x1 = vpx + Math.cos(baseAngle) * radius1
+    const y1 = vpy + Math.sin(baseAngle) * radius1
+
+    const g = ctx.createLinearGradient(x0, y0, x1, y1)
     g.addColorStop(0, "transparent")
-    g.addColorStop(0.5, hex2rgba(palette.glow, 0.12 * intensity))
+    g.addColorStop(0.45, hex2rgba(palette.glow, 0.16 * intensity))
     g.addColorStop(1, "transparent")
-    ctx.strokeStyle = g; ctx.lineWidth = 1.2
+    ctx.strokeStyle = g
+    ctx.lineWidth = 0.9 + intensity * 0.6
     ctx.beginPath()
-    ctx.moveTo(cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist)
-    ctx.lineTo(cx + Math.cos(angle) * (dist + len), cy + Math.sin(angle) * (dist + len))
+    ctx.moveTo(x0, y0)
+    ctx.lineTo(x1, y1)
     ctx.stroke()
   }
   ctx.restore()
 }
 
-function drawVignette(ctx: CanvasRenderingContext2D, W: number, H: number) {
-  const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.22, W / 2, H / 2, H * 0.86)
-  g.addColorStop(0, "transparent"); g.addColorStop(1, "rgba(0,0,0,0.58)")
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+function drawVignette(ctx: CanvasRenderingContext2D, W: number, H: number, speed = 0) {
+  const speedN = Math.min(speed / 480, 1)
+  // Vignette grows darker + tighter at speed → tunnel-vision effect
+  const inner = H * (0.30 - speedN * 0.10)
+  const outer = H * (0.88 - speedN * 0.08)
+  const alpha  = 0.52 + speedN * 0.22
+  const g = ctx.createRadialGradient(W / 2, H * 0.60, inner, W / 2, H * 0.55, outer)
+  g.addColorStop(0, "transparent")
+  g.addColorStop(1, `rgba(0,0,0,${alpha})`)
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, W, H)
 }
 
-// Atmospheric glow at the top of screen (the "far horizon ahead")
+// Cinematic sky + horizon — fills the "road ahead" upper portion of screen
 function drawHorizonAtmosphere(ctx: CanvasRenderingContext2D, W: number, H: number, palette: NeonPalette, speed: number) {
-  const intensity = Math.min(speed / 300, 1)
-  const g = ctx.createLinearGradient(0, 0, 0, H * 0.28)
-  g.addColorStop(0, hex2rgba(palette.bgMid, 0.7 + intensity * 0.2))
-  g.addColorStop(0.6, hex2rgba(palette.primary, 0.06 * intensity))
-  g.addColorStop(1, "transparent")
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H * 0.28)
+  const speedN = Math.min(speed / 320, 1)
 
-  // Horizon glow line
-  ctx.fillStyle = hex2rgba(palette.glow, 0.08 * intensity)
-  ctx.fillRect(0, H * 0.26, W, 3)
+  // Deep sky gradient — covers upper ~38% of screen (road ahead area)
+  const skyH = H * 0.38
+  const sky = ctx.createLinearGradient(0, 0, 0, skyH)
+  sky.addColorStop(0,   palette.bgMid)
+  sky.addColorStop(0.55, hex2rgba(palette.primary, 0.05 + speedN * 0.07))
+  sky.addColorStop(1,   "transparent")
+  ctx.fillStyle = sky
+  ctx.fillRect(0, 0, W, skyH)
+
+  // Subtle star field (static but pretty)
+  ctx.fillStyle = "rgba(255,255,255,0.55)"
+  for (let i = 0; i < 38; i++) {
+    // Deterministic positions seeded by index
+    const sx = ((i * 173 + 47) % 97) / 97 * W
+    const sy = ((i * 251 + 13) % 61) / 61 * skyH * 0.72
+    const sr = 0.5 + ((i * 97) % 5) * 0.2
+    ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill()
+  }
+
+  // Horizon glow band — sits right where road meets "sky"
+  const horizonY = H * 0.33
+  const glow = ctx.createLinearGradient(0, horizonY - 18, 0, horizonY + 28)
+  glow.addColorStop(0,   "transparent")
+  glow.addColorStop(0.5, hex2rgba(palette.glow, 0.12 + speedN * 0.22))
+  glow.addColorStop(1,   "transparent")
+  ctx.fillStyle = glow
+  ctx.fillRect(0, horizonY - 18, W, 46)
+
+  // City-glow blobs on horizon (pillars of light)
+  for (let i = 0; i < 5; i++) {
+    const bx = (0.1 + i * 0.2) * W
+    const bw = 30 + ((i * 53) % 40)
+    const bg = ctx.createRadialGradient(bx, horizonY, 0, bx, horizonY, bw)
+    bg.addColorStop(0, hex2rgba(i % 2 === 0 ? palette.primary : palette.secondary, 0.10 + speedN * 0.08))
+    bg.addColorStop(1, "transparent")
+    ctx.fillStyle = bg
+    ctx.fillRect(bx - bw, horizonY - bw / 2, bw * 2, bw)
+  }
 }
 
 // ─── HUD ─────────────────────────────────────────────────────────────────────
@@ -731,7 +777,7 @@ export function NeonDriftGame() {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const inputRef     = useRef<InputState>({ left: false, right: false, throttle: false, brake: false, handbrake: false })
   const carRef       = useRef<CarState>(createCar(HIGHWAY_START_X, HIGHWAY_START_Y, HIGHWAY_START_ANGLE))
-  const camRef       = useRef<Camera>({ x: HIGHWAY_START_X, y: HIGHWAY_START_Y, heading: HIGHWAY_START_ANGLE })
+  const camRef       = useRef<Camera>({ x: HIGHWAY_START_X, y: HIGHWAY_START_Y, heading: HIGHWAY_START_ANGLE, bank: 0 })
   const highwayRef   = useRef<Highway | null>(null)
   const trafficRef   = useRef<TrafficCar[]>([])
   const particlesRef = useRef<Particle[]>([])
@@ -744,7 +790,8 @@ export function NeonDriftGame() {
   const prevScoreRef = useRef(0)
   const trafficIdRef = useRef(0)
   const trafficSpawnTimer = useRef(4)
-  const musicMutedRef = useRef(false)
+  const musicMutedRef     = useRef(false)
+  const cameraShakeRef    = useRef(0)   // 0–1, decays each frame
 
   // Keep muted ref in sync
   useEffect(() => { musicMutedRef.current = musicMuted }, [musicMuted])
@@ -783,7 +830,8 @@ export function NeonDriftGame() {
   // ── Start / reset ─────────────────────────────────────────────────────────
   const startGame = useCallback(() => {
     carRef.current      = createCar(HIGHWAY_START_X, HIGHWAY_START_Y, HIGHWAY_START_ANGLE)
-    camRef.current      = { x: HIGHWAY_START_X, y: HIGHWAY_START_Y, heading: HIGHWAY_START_ANGLE }
+    camRef.current      = { x: HIGHWAY_START_X, y: HIGHWAY_START_Y, heading: HIGHWAY_START_ANGLE, bank: 0 }
+    cameraShakeRef.current = 0
     highwayRef.current  = new Highway(HIGHWAY_START_X, HIGHWAY_START_Y, HIGHWAY_START_ANGLE)
     trafficRef.current  = []
     particlesRef.current = []
@@ -866,13 +914,38 @@ export function NeonDriftGame() {
         const onRoad = hw.isOnRoad(carRef.current.x, carRef.current.y)
         let newCar   = stepCar(carRef.current, inputRef.current, dt, onRoad)
 
-        // Wall constraint
+        // Wall constraint — bounce using the road segment's perpendicular normal
         const { x: cx, y: cy, hit } = hw.constrainToRoad(newCar.x, newCar.y)
         if (hit) {
-          const nx = newCar.x / Math.hypot(newCar.x, newCar.y)
-          const ny = newCar.y / Math.hypot(newCar.x, newCar.y)
-          const dot = newCar.vx * nx + newCar.vy * ny
-          newCar = { ...newCar, x: cx, y: cy, vx: newCar.vx - dot * nx * 1.2, vy: newCar.vy - dot * ny * 1.2 }
+          const r = hw.nearestSegment(cx, cy)
+          if (r) {
+            // Perpendicular to road direction (one of the two wall normals)
+            const perpX = -Math.sin(r.seg.angle)
+            const perpY =  Math.cos(r.seg.angle)
+            // Which side of the centreline? sign gives the outward-pointing normal.
+            const side  = ((cx - r.seg.x) * perpX + (cy - r.seg.y) * perpY) >= 0 ? 1 : -1
+            const bnx   = perpX * side, bny = perpY * side
+            const vDotN = newCar.vx * bnx + newCar.vy * bny
+            if (vDotN < 0) {
+              // Moving into wall → reflect + energy loss
+              newCar = { ...newCar, x: cx, y: cy,
+                vx: newCar.vx - 1.45 * vDotN * bnx,
+                vy: newCar.vy - 1.45 * vDotN * bny,
+              }
+              // Cap speed (wall absorbs energy)
+              const postSpd = Math.hypot(newCar.vx, newCar.vy)
+              const cappedSpd = Math.min(postSpd, newCar.speed * 0.62)
+              if (postSpd > 0) newCar = { ...newCar,
+                vx: newCar.vx * cappedSpd / postSpd,
+                vy: newCar.vy * cappedSpd / postSpd,
+              }
+              cameraShakeRef.current = Math.max(cameraShakeRef.current, 0.18)
+            } else {
+              newCar = { ...newCar, x: cx, y: cy }
+            }
+          } else {
+            newCar = { ...newCar, x: cx, y: cy }
+          }
         }
 
         // Drift notif
@@ -897,7 +970,7 @@ export function NeonDriftGame() {
 
         // ── Traffic ───────────────────────────────────────────────────────
         trafficSpawnTimer.current -= dt
-        if (trafficSpawnTimer.current <= 0 && trafficRef.current.length < 4) {
+        if (trafficSpawnTimer.current <= 0 && trafficRef.current.length < 6) {
           const segs  = hw.segments
           const car   = carRef.current
           const ahead = segs.filter(s => {
@@ -913,31 +986,79 @@ export function NeonDriftGame() {
               x:       seg.x + perpX * lat,
               y:       seg.y + perpY * lat,
               heading: seg.angle,
-              speed:   200 + Math.random() * 85,
+              speed:   190 + Math.random() * 110,
               passed:  false,
             })
           }
-          trafficSpawnTimer.current = 5 + Math.random() * 4
+          trafficSpawnTimer.current = 3.5 + Math.random() * 3.5
         }
 
-        // Update traffic
+        // Update traffic — OBB collision + near-miss
+        // Player half-extents: 31 fwd, 13 lat  |  Traffic half-extents: 18 fwd, 9 lat
+        const COLL_FWD = 49, COLL_LAT = 22   // combined (sum of both half-extents)
+        const NEAR_FWD = 80, NEAR_LAT = 50   // near-miss zone (wider)
+
         trafficRef.current = trafficRef.current.filter(tc => {
-          // Despawn if far behind car
           const dx = tc.x - carRef.current.x
           const dy = tc.y - carRef.current.y
           const fwd = dx * Math.cos(carRef.current.heading) + dy * Math.sin(carRef.current.heading)
           if (fwd < -900) return false
 
-          // Near-miss detection
-          const lateralDist = Math.hypot(dx, dy)
-          if (!tc.passed && fwd < 50 && fwd > -50 && lateralDist < 65) {
-            // near miss!
-            const id = ++notifId.current
-            const pts = 500
-            const newScore = carRef.current.score + pts
-            carRef.current = { ...carRef.current, score: newScore }
-            setFloatNotifs(p => [...p.slice(-4), { id, text: "NEAR MISS!", pts, x: W / 2, y: H / 2 - 120 }])
-            setTimeout(() => setFloatNotifs(pp => pp.filter(n => n.id !== id)), 1800)
+          // Project offset into player car's local axes (OBB check)
+          const cosH   = Math.cos(carRef.current.heading)
+          const sinH   = Math.sin(carRef.current.heading)
+          const localX = dx * cosH + dy * sinH    // forward component (+= ahead)
+          const localY = -dx * sinH + dy * cosH   // lateral component
+
+          // ── Collision ──────────────────────────────────────────────────────
+          if (Math.abs(localX) < COLL_FWD && Math.abs(localY) < COLL_LAT) {
+            const dist  = Math.hypot(dx, dy) || 1
+            // Repulsion direction: from tc centre toward player
+            const awayX = -dx / dist, awayY = -dy / dist
+            const curSpd = carRef.current.speed
+
+            // Arcade impulse: slow player hard, kick sideways slightly
+            carRef.current = {
+              ...carRef.current,
+              vx: carRef.current.vx * 0.35 + awayX * curSpd * 0.30,
+              vy: carRef.current.vy * 0.35 + awayY * curSpd * 0.30,
+              combo: 1, comboTimer: 0,
+            }
+
+            // Camera shake
+            cameraShakeRef.current = Math.max(cameraShakeRef.current, 0.42)
+
+            // Impact sparks at collision point
+            const impX = (carRef.current.x + tc.x) / 2
+            const impY = (carRef.current.y + tc.y) / 2
+            for (let si = 0; si < 22; si++) {
+              if (particlesRef.current.length < MAX_PARTICLES) {
+                const spd = 200 + Math.random() * 300
+                const ang = Math.random() * Math.PI * 2
+                particlesRef.current.push({
+                  x: impX + (Math.random() - 0.5) * 22,
+                  y: impY + (Math.random() - 0.5) * 22,
+                  vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+                  life: 1, maxLife: 0.18 + Math.random() * 0.28,
+                  size: 1.5 + Math.random() * 3.5, color: palette.accent, isSpark: true,
+                })
+              }
+            }
+
+            // Notification
+            const cid = ++notifId.current
+            setFloatNotifs(p => [...p.slice(-4), { id: cid, text: "CRASH!", pts: 0, x: W / 2, y: H / 2 - 80 }])
+            setTimeout(() => setFloatNotifs(pp => pp.filter(n => n.id !== cid)), 1100)
+            return false  // traffic car removed on impact
+          }
+
+          // ── Near-miss bonus ────────────────────────────────────────────────
+          if (!tc.passed && Math.abs(localX) < NEAR_FWD && Math.abs(localY) < NEAR_LAT) {
+            tc.passed = true
+            const nmId = ++notifId.current
+            carRef.current = { ...carRef.current, score: carRef.current.score + 500 }
+            setFloatNotifs(p => [...p.slice(-4), { id: nmId, text: "NEAR MISS!", pts: 500, x: W / 2, y: H / 2 - 120 }])
+            setTimeout(() => setFloatNotifs(pp => pp.filter(n => n.id !== nmId)), 1800)
           }
           if (fwd < -20) tc.passed = true
 
@@ -957,30 +1078,48 @@ export function NeonDriftGame() {
         audioRef.current?.update(newCar.speed, Math.abs(newCar.driftAngle), inputRef.current.throttle)
       }
 
-      // ── Camera ────────────────────────────────────────────────────────────
-      const car     = carRef.current
-      const posLag  = 1 - Math.exp(-6 * dt)
-      const headLag = 1 - Math.exp(-4 * dt)
-      camRef.current.x += (car.x - camRef.current.x) * posLag
-      camRef.current.y += (car.y - camRef.current.y) * posLag
-      camRef.current.heading += normalizeAngle(car.heading - camRef.current.heading) * headLag
+      // ── Third-person camera ───────────────────────────────────────────────
+      const car = carRef.current
+      const cam = camRef.current
+
+      // Camera trails ~110 px behind car in world space
+      const CAM_BEHIND = 110
+      const targetCamX = car.x - Math.cos(car.heading) * CAM_BEHIND
+      const targetCamY = car.y - Math.sin(car.heading) * CAM_BEHIND
+
+      const posLag  = 1 - Math.exp(-7 * dt)   // snappy position follow
+      const headLag = 1 - Math.exp(-2.8 * dt) // slightly floaty heading
+
+      cam.x += (targetCamX - cam.x) * posLag
+      cam.y += (targetCamY - cam.y) * posLag
+      cam.heading += normalizeAngle(car.heading - cam.heading) * headLag
+
+      // Cinematic banking during drift (gentle tilt into the corner)
+      const targetBank = car.drifting ? normalizeAngle(car.driftAngle) * -0.09 : 0
+      cam.bank += (targetBank - cam.bank) * (1 - Math.exp(-5 * dt))
+
+      // Camera shake decays exponentially
+      cameraShakeRef.current *= Math.exp(-9 * dt)
 
       tRef.current += dt
 
       // ── Render ────────────────────────────────────────────────────────────
-      const cam = camRef.current
 
       // 1. Clear
       ctx.fillStyle = palette.bg
       ctx.fillRect(0, 0, W, H)
 
-      // 2. Screen-space atmosphere (horizon glow at top = "what's ahead")
+      // 2. Screen-space sky + horizon (road stretches toward top of screen)
       drawHorizonAtmosphere(ctx, W, H, palette, car.speed)
 
-      // 3. Camera transform
+      // 3. Third-person camera transform
+      //    Anchor at H*0.70 → car appears ~55-60% down, road fills top 55%
+      const shake = cameraShakeRef.current
+      const shakeX = shake > 0.01 ? (Math.random() - 0.5) * shake * W * 0.022 : 0
+      const shakeY = shake > 0.01 ? (Math.random() - 0.5) * shake * H * 0.014 : 0
       ctx.save()
-      ctx.translate(W / 2, H / 2)
-      ctx.rotate(-(cam.heading + Math.PI / 2))
+      ctx.translate(W / 2 + shakeX, H * 0.70 + shakeY)
+      ctx.rotate(-(cam.heading + Math.PI / 2) + cam.bank)
       ctx.translate(-cam.x, -cam.y)
 
       // 4. World background + grid
@@ -1005,7 +1144,7 @@ export function NeonDriftGame() {
 
       // 10. Screen-space FX
       drawSpeedLines(ctx, W, H, car.speed, palette, tRef.current)
-      drawVignette(ctx, W, H)
+      drawVignette(ctx, W, H, car.speed)
 
       // 11. HUD
       drawHUD(ctx, W, H, car, palette, distRef.current,

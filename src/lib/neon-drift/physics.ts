@@ -38,19 +38,19 @@ export interface InputState {
 }
 
 // ─── Physics constants ────────────────────────────────────────────────────────
-const MAX_SPEED       = 460   // px/s
-const ACCEL           = 210   // px/s²
-const COAST_DRAG      = 70    // px/s² natural deceleration
-const BRAKE_FORCE     = 420   // px/s²
-const STEER_RATE      = 2.6   // rad/s at slow speed
-const STEER_RATE_HI   = 1.8   // rad/s at max speed
-const HANDBRAKE_STEER = 3.4   // rad/s during handbrake drift
+const MAX_SPEED       = 560   // px/s  (up from 460 — more top-end danger)
+const ACCEL           = 255   // px/s² (up from 210)
+const COAST_DRAG      = 52    // px/s² (down from 70 — stays fast longer)
+const BRAKE_FORCE     = 440   // px/s²
+const STEER_RATE      = 2.8   // rad/s at slow speed
+const STEER_RATE_HI   = 1.55  // rad/s at max speed (was 1.8 — tighter high-speed)
+const HANDBRAKE_STEER = 4.2   // rad/s during handbrake drift (was 3.4 — snappier initiation)
 const GRIP_RATE_NORM  = 7.5   // 1/s — lateral grip (higher = snappier)
-const GRIP_RATE_DRIFT = 0.75  // 1/s — lateral grip during handbrake
-const DRIFT_THRESH    = 0.14  // radians, min drift angle to score
-const MIN_DRIFT_SPEED = 80    // px/s, min speed to count as drifting
-const COMBO_TIMEOUT   = 1.8   // seconds before combo resets after drift ends
-const OFF_TRACK_DRAG  = 3.5   // extra drag/s² when off track
+const GRIP_RATE_DRIFT = 0.60  // 1/s — lateral grip during handbrake (was 0.75 — longer slides)
+const DRIFT_THRESH    = 0.12  // radians, min drift angle to score (was 0.14 — easier to trigger)
+const MIN_DRIFT_SPEED = 70    // px/s, min speed to count as drifting
+const COMBO_TIMEOUT   = 2.0   // seconds before combo resets (was 1.8 — more forgiveness)
+const OFF_TRACK_DRAG  = 3.2   // extra drag/s² when off track
 
 export function createCar(x: number, y: number, heading: number): CarState {
   return {

@@ -2,10 +2,10 @@
 // Procedural road segment generator.
 // World-space: +x right, +y down (canvas convention).
 
-export const SEGMENT_LEN    = 55    // px between waypoints
-export const ROAD_HALF_W    = 130   // px, half the driveable width
-export const LOOK_AHEAD_PX  = 2800  // generate this far ahead of car
-export const LOOK_BEHIND_PX = 1200  // keep this far behind car
+export const SEGMENT_LEN    = 55     // px between waypoints
+export const ROAD_HALF_W    = 145    // px, half the driveable width (wider = more drift room)
+export const LOOK_AHEAD_PX  = 3800   // generate this far ahead of car
+export const LOOK_BEHIND_PX = 1400   // keep this far behind car
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@ export interface RoadSegment {
   x:     number
   y:     number
   angle: number   // direction of travel (radians)
-  type:  'straight' | 'curve-left' | 'curve-right' | 'drift-zone'
+  type:  'straight' | 'curve-left' | 'curve-right' | 'drift-zone' | 'sweeper'
 }
 
 export interface EnvObject {
@@ -27,34 +27,70 @@ export interface EnvObject {
 // ─── Road chunk pacing ────────────────────────────────────────────────────────
 
 interface ChunkPlan {
-  type:  'straight' | 'curve-left' | 'curve-right' | 'drift-zone'
-  count: number   // segments in this chunk
-  curvature: number  // radians per segment (±)
+  type:  'straight' | 'curve-left' | 'curve-right' | 'drift-zone' | 'sweeper'
+  count: number       // segments in this chunk
+  curvature: number   // radians per segment (±)
 }
 
 function pickChunk(prevType: ChunkPlan['type'], usedRight: boolean): ChunkPlan {
-  // After a drift-zone, force a straight recovery
-  if (prevType === 'drift-zone') {
-    return { type: 'straight', count: 18 + rndInt(10), curvature: 0 }
+  // After a drift-zone or sweeper, force a straight recovery section
+  if (prevType === 'drift-zone' || prevType === 'sweeper') {
+    return { type: 'straight', count: 16 + rndInt(10), curvature: 0 }
   }
+
   const r = Math.random()
-  if (r < 0.30) {
-    return { type: 'straight', count: 20 + rndInt(18), curvature: 0 }
+
+  // ── Long straight (20 %) ─ builds anticipation before the next bend ────────
+  if (r < 0.20) {
+    return { type: 'straight', count: 38 + rndInt(28), curvature: 0 }
   }
-  if (r < 0.60) {
-    const side = prevType === 'curve-left' ? 'curve-right' : (prevType === 'curve-right' ? 'curve-left' : (usedRight ? 'curve-left' : 'curve-right'))
+
+  // ── Short straight / chicane gap (12 %) ───────────────────────────────────
+  if (r < 0.32) {
+    return { type: 'straight', count: 10 + rndInt(10), curvature: 0 }
+  }
+
+  // ── Gentle sweeping curve (22 %) ─ normal highway bend ────────────────────
+  if (r < 0.54) {
+    const side = prevType === 'curve-left'  ? 'curve-right'
+               : prevType === 'curve-right' ? 'curve-left'
+               : usedRight                  ? 'curve-left' : 'curve-right'
     return {
       type: side,
-      count: 10 + rndInt(14),
-      curvature: (side === 'curve-right' ? 1 : -1) * (0.008 + Math.random() * 0.014),
+      count: 16 + rndInt(20),
+      curvature: (side === 'curve-right' ? 1 : -1) * (0.013 + Math.random() * 0.020),
     }
   }
-  // Drift-zone (tighter curve)
+
+  // ── S-curve chain (16 %) ─ chicane / snake section ────────────────────────
+  if (r < 0.70) {
+    // Alternate hard from previous direction to create snaking
+    const side = prevType === 'curve-right' ? 'curve-left'
+               : prevType === 'curve-left'  ? 'curve-right'
+               : usedRight                   ? 'curve-left' : 'curve-right'
+    return {
+      type: side,
+      count: 10 + rndInt(12),
+      curvature: (side === 'curve-right' ? 1 : -1) * (0.022 + Math.random() * 0.018),
+    }
+  }
+
+  // ── Big sweeper (8 %) ─ long wide radius corner at high speed ─────────────
+  if (r < 0.78) {
+    const side = usedRight ? 'curve-left' : 'curve-right'
+    return {
+      type: 'sweeper',
+      count: 22 + rndInt(16),
+      curvature: (side === 'curve-right' ? 1 : -1) * (0.018 + Math.random() * 0.014),
+    }
+  }
+
+  // ── Drift-zone (22 %) ─ tight technical bend, demands handbrake ───────────
   const side = usedRight ? 'curve-left' : 'curve-right'
   return {
     type: 'drift-zone',
-    count: 6 + rndInt(8),
-    curvature: (side === 'curve-right' ? 1 : -1) * (0.022 + Math.random() * 0.018),
+    count: 8 + rndInt(10),
+    curvature: (side === 'curve-right' ? 1 : -1) * (0.038 + Math.random() * 0.030),
   }
 }
 
@@ -77,16 +113,16 @@ export class Highway {
   private lastCurveRight = false
 
   // Env generation state
-  private nextPoleAt:      number = 0   // segment id
+  private nextPoleAt:      number = 0
   private nextBillboardAt: number = 0
   private nextBuildingAt:  number = 0
   private billboardSide:   -1 | 1 = 1
 
-  // Billboard copy pool
   private static readonly BILLBOARD_LABELS = [
     'NEON CITY 2099', 'DRIFT ZONE AHEAD', 'MAX SPEED', 'SYSTEM ONLINE',
     'CYBER CORP', 'GRID SECTOR 7', 'VELOCITY+', 'HYPERLANE',
     'NO LIMITS', 'ENTER FLOW STATE', 'SPEED IS FREEDOM', '∞ MILES',
+    'DANGER AHEAD', 'FULL THROTTLE', 'NIGHT HIGHWAY', 'OVERDRIVE',
   ]
   private billboardIdx = 0
 
@@ -95,24 +131,21 @@ export class Highway {
     this.genY     = startY
     this.genAngle = startAngle
 
-    this.currentChunk   = { type: 'straight', count: 30, curvature: 0 }
-    this.chunkRemaining = 30
+    this.currentChunk   = { type: 'straight', count: 35, curvature: 0 }
+    this.chunkRemaining = 35
 
-    // Prime the road
     this.generateSegments(Math.ceil((LOOK_AHEAD_PX + 600) / SEGMENT_LEN))
   }
 
   // ── Per-frame update ─────────────────────────────────────────────────────
 
   update(carX: number, carY: number, carAngle: number): void {
-    // How far ahead is the road?
     const aheadDist = this.distAheadOf(carX, carY, carAngle)
     if (aheadDist < LOOK_AHEAD_PX) {
-      const needed = Math.ceil((LOOK_AHEAD_PX - aheadDist) / SEGMENT_LEN) + 8
+      const needed = Math.ceil((LOOK_AHEAD_PX - aheadDist) / SEGMENT_LEN) + 10
       this.generateSegments(needed)
     }
 
-    // Cull segments/env objects behind the car
     const minFwd = -LOOK_BEHIND_PX
     this.segments = this.segments.filter(s => {
       const dx = s.x - carX
@@ -147,8 +180,8 @@ export class Highway {
     const nx = (x - r.seg.x) / r.dist
     const ny = (y - r.seg.y) / r.dist
     return {
-      x: r.seg.x + nx * (ROAD_HALF_W - 1),
-      y: r.seg.y + ny * (ROAD_HALF_W - 1),
+      x: r.seg.x + nx * (ROAD_HALF_W - 2),
+      y: r.seg.y + ny * (ROAD_HALF_W - 2),
       hit: true,
     }
   }
@@ -176,11 +209,10 @@ export class Highway {
 
   private generateSegments(count: number): void {
     for (let i = 0; i < count; i++) {
-      // Chunk pacing
       if (this.chunkRemaining <= 0) {
         const next = pickChunk(this.currentChunk.type, this.lastCurveRight)
-        if (next.type === 'curve-right') this.lastCurveRight = true
-        if (next.type === 'curve-left')  this.lastCurveRight = false
+        if (next.type === 'curve-right' || next.type === 'sweeper') this.lastCurveRight = true
+        if (next.type === 'curve-left') this.lastCurveRight = false
         this.currentChunk   = next
         this.chunkRemaining = next.count
       }
@@ -207,19 +239,19 @@ export class Highway {
     if (seg.id >= this.nextPoleAt) {
       this.envObjects.push({ segId: seg.id, side: -1, kind: 'pole' })
       this.envObjects.push({ segId: seg.id, side:  1, kind: 'pole' })
-      this.nextPoleAt = seg.id + 8 + rndInt(6)
+      this.nextPoleAt = seg.id + 6 + rndInt(5)
     }
     if (seg.id >= this.nextBillboardAt) {
       const label = Highway.BILLBOARD_LABELS[this.billboardIdx % Highway.BILLBOARD_LABELS.length]
       this.billboardIdx++
       this.envObjects.push({ segId: seg.id, side: this.billboardSide, kind: 'billboard', label })
       this.billboardSide = this.billboardSide === 1 ? -1 : 1
-      this.nextBillboardAt = seg.id + 20 + rndInt(14)
+      this.nextBillboardAt = seg.id + 18 + rndInt(12)
     }
     if (seg.id >= this.nextBuildingAt) {
       this.envObjects.push({ segId: seg.id, side: -1, kind: 'building' })
       this.envObjects.push({ segId: seg.id, side:  1, kind: 'building' })
-      this.nextBuildingAt = seg.id + 38 + rndInt(20)
+      this.nextBuildingAt = seg.id + 32 + rndInt(18)
     }
   }
 
@@ -237,4 +269,4 @@ export class Highway {
 
 export const HIGHWAY_START_X     = 0
 export const HIGHWAY_START_Y     = 0
-export const HIGHWAY_START_ANGLE = 0   // heading right
+export const HIGHWAY_START_ANGLE = 0
