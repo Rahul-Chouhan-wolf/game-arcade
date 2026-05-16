@@ -719,14 +719,14 @@ export function GoLearnPage() {
       }}>
         <div style={{ maxWidth: 720, margin: '0 auto', padding: '8px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
           <Link
-            href="/go"
+            href="/"
             style={{
               width: 44, height: 44,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               borderRadius: 8, color: '#818384', textDecoration: 'none', flexShrink: 0,
             }}
             className="hover:text-white hover:bg-white/5 transition-colors"
-            aria-label="Back to Go game"
+            aria-label="Back to hub"
           >
             <svg style={{ width: 20, height: 20 }} viewBox="0 0 24 24" fill="currentColor">
               <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>

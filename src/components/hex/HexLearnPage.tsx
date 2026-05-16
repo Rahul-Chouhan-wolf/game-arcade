@@ -900,10 +900,10 @@ export function HexLearnPage() {
                  paddingLeft: 'max(1rem, env(safe-area-inset-left))',
                  paddingRight: 'max(1rem, env(safe-area-inset-right))' }}
       >
-        <Link href="/hexle"
+        <Link href="/"
               className="flex items-center gap-1.5 text-xs font-bold text-white/40 hover:text-white/70 transition-colors"
               style={{ minHeight: 44, display:'flex', alignItems:'center' }}>
-          ← Hexle
+          ← Back
         </Link>
 
         <div className="text-center">
