@@ -756,7 +756,7 @@ function GoHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) 
                 Want to learn tactics & strategy in depth?
               </p>
               <Link
-                href="/go/learn"
+                href="/learn"
                 onClick={onClose}
                 style={{
                   display: 'block', textAlign: 'center',
