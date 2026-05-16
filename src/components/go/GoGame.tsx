@@ -656,13 +656,48 @@ function GoBoard({
 
 function GoHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const rules = [
-    { icon: '⚫', title: 'Placement', body: 'Players take turns placing a stone on any empty intersection. Black moves first.' },
-    { icon: '💨', title: 'Liberties & Capture', body: 'A stone (or connected group) must have at least one liberty (empty adjacent point) to stay on the board. Surrounded stones are captured and removed.' },
-    { icon: '🚫', title: 'No Suicide', body: 'You may not place a stone that would leave it with zero liberties, unless doing so captures opponent stones.' },
-    { icon: '🔄', title: 'Ko Rule', body: 'You may not recreate the exact board position that existed on the previous move. This prevents infinite loops.' },
-    { icon: '✋', title: 'Passing', body: 'Either player may pass. Two consecutive passes end the game.' },
-    { icon: '🏆', title: 'Scoring', body: 'Count territory (empty intersections surrounded by your stones) plus captures. Komi gives White bonus points for moving second.' },
+    {
+      icon: '⚫',
+      title: 'Placement',
+      body: 'Players alternate placing one stone per turn on any empty intersection. Black moves first. Stones are never moved once placed.',
+    },
+    {
+      icon: '💨',
+      title: 'Liberties & Capture',
+      body: 'Each empty point directly adjacent to a stone (or group) is a liberty. When all liberties of a group are filled by the opponent, those stones are captured and removed from the board.',
+    },
+    {
+      icon: '🔗',
+      title: 'Connected Groups',
+      body: 'Stones of the same colour that are directly adjacent (orthogonally) form a group and share all their liberties. Connecting your groups makes them stronger and harder to capture.',
+    },
+    {
+      icon: '🚫',
+      title: 'No Suicide',
+      body: 'You may not place a stone where it would immediately have zero liberties — unless doing so simultaneously captures enough opponent stones to give your group liberties.',
+    },
+    {
+      icon: '🔄',
+      title: 'Ko Rule',
+      body: 'You may not make a move that recreates the exact board position from the previous turn. This prevents infinite capture loops. After a ko capture, you must play elsewhere before recapturing.',
+    },
+    {
+      icon: '👁️',
+      title: 'Two-Eye Life',
+      body: 'A group with two separate enclosed empty spaces (eyes) is unconditionally alive — the opponent can never capture it. Securing two eyes for your groups is the primary strategic goal.',
+    },
+    {
+      icon: '✋',
+      title: 'Passing',
+      body: 'Either player may pass their turn. Two consecutive passes end the game. Passing is typically only done in the endgame when no more profitable moves remain.',
+    },
+    {
+      icon: '🏆',
+      title: 'Scoring (Japanese Rules)',
+      body: 'Count empty intersections your stones surround (territory) plus stones you captured. White adds komi (usually 6.5) to compensate for Black moving first. The higher score wins.',
+    },
   ]
+
   return (
     <AnimatePresence>
       {open && (
@@ -685,8 +720,8 @@ function GoHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) 
               border: '1px solid #3a3a3c',
               borderRadius: 20,
               padding: '20px 20px 16px',
-              width: 'min(380px, calc(100vw - 32px))',
-              maxHeight: 'min(85dvh, 600px)',
+              width: 'min(400px, calc(100vw - 32px))',
+              maxHeight: 'min(85dvh, 640px)',
               overflowY: 'auto',
             }}
           >
@@ -702,7 +737,8 @@ function GoHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) 
                 ✕
               </button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
               {rules.map(r => (
                 <div key={r.title} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                   <span style={{ fontSize: '1.1rem', flexShrink: 0, marginTop: 1 }}>{r.icon}</span>
@@ -712,6 +748,28 @@ function GoHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) 
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Link to full learning guide */}
+            <div style={{ borderTop: '1px solid #2a2a2c', paddingTop: 14 }}>
+              <p style={{ fontSize: '0.62rem', color: '#666', marginBottom: 10, textAlign: 'center' }}>
+                Want to learn tactics & strategy in depth?
+              </p>
+              <Link
+                href="/go/learn"
+                onClick={onClose}
+                style={{
+                  display: 'block', textAlign: 'center',
+                  padding: '10px 0', borderRadius: 12,
+                  background: '#e8b86d18', border: '1px solid #e8b86d40',
+                  color: '#e8b86d', fontSize: '0.72rem', fontWeight: 700,
+                  textDecoration: 'none', letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                }}
+                className="hover:bg-[#e8b86d30] transition-colors"
+              >
+                Open Study Guide — 14 Concepts →
+              </Link>
             </div>
           </motion.div>
         </motion.div>
