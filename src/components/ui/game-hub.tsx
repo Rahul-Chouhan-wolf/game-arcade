@@ -21,10 +21,11 @@ interface Game {
   isLive?: boolean
   isNew?: boolean
   comingSoon?: boolean
-  preview?: TileState[][]   // word-tile preview (Lexle)
-  dotPreview?: boolean      // dots-and-boxes preview (Boxle)
-  goPreview?: boolean       // go board preview (Go)
-  hexPreview?: boolean      // hex board preview (Hexle)
+  preview?: TileState[][]      // word-tile preview (Lexle)
+  dotPreview?: boolean         // dots-and-boxes preview (Boxle)
+  goPreview?: boolean          // go board preview (Go)
+  hexPreview?: boolean         // hex board preview (Hexle)
+  orbitalPreview?: boolean     // orbital orrery preview
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -80,8 +81,19 @@ const GAMES: Game[] = [
     href: "/hexle",
     learnHref: "/learn/hexle",
     isLive: true,
-    isNew: true,
     hexPreview: true,
+  },
+  {
+    id: "orbital",
+    name: "Orbital",
+    tagline: "Master gravity. Navigate the cosmos.",
+    description: "Launch probes through space. Use planetary gravity to slingshot, arc, and navigate 8 handcrafted trajectory puzzles.",
+    tags: ["Space", "Physics", "Puzzle"],
+    accent: "#818cf8",
+    href: "/orbital",
+    isLive: true,
+    isNew: true,
+    orbitalPreview: true,
   },
 ]
 
@@ -342,6 +354,99 @@ function HexMiniBoard() {
   )
 }
 
+// ── Orbital orrery mini preview ───────────────────────────────────────────────
+
+function OrbitalMiniPreview() {
+  const W = 88, H = 72, cx = W / 2, cy = H / 2
+
+  // Orbit ellipse parameters
+  const orbit1 = { rx: 26, ry: 18 }
+  const orbit2 = { rx: 38, ry: 28 }
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ overflow: 'visible' }}>
+      <defs>
+        <radialGradient id="om-star" cx="35%" cy="30%" r="65%">
+          <stop offset="0%"   stopColor="#fde68a" />
+          <stop offset="60%"  stopColor="#f97316" />
+          <stop offset="100%" stopColor="#dc2626" />
+        </radialGradient>
+        <radialGradient id="om-p1" cx="35%" cy="30%" r="65%">
+          <stop offset="0%"   stopColor="#93c5fd" />
+          <stop offset="100%" stopColor="#1d4ed8" />
+        </radialGradient>
+        <radialGradient id="om-p2" cx="35%" cy="30%" r="65%">
+          <stop offset="0%"   stopColor="#c4b5fd" />
+          <stop offset="100%" stopColor="#7c3aed" />
+        </radialGradient>
+        <filter id="om-glo">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+
+      {/* Background */}
+      <rect x={0} y={0} width={W} height={H} rx={6} fill="#05051a" />
+
+      {/* Stars */}
+      {[12,28,65,78,14,55,72,33].map((v, i) => (
+        <circle key={i} cx={(v * 11 + i * 7) % W} cy={(v * 7 + i * 13) % H} r={0.7}
+          fill="white" opacity={0.4 + (i % 3) * 0.2} />
+      ))}
+
+      {/* Orbit paths */}
+      <ellipse cx={cx} cy={cy} rx={orbit1.rx} ry={orbit1.ry}
+        fill="none" stroke="#818cf8" strokeWidth={0.6} strokeDasharray="2 3" opacity={0.35} />
+      <ellipse cx={cx} cy={cy} rx={orbit2.rx} ry={orbit2.ry}
+        fill="none" stroke="#6366f1" strokeWidth={0.5} strokeDasharray="2 4" opacity={0.25} />
+
+      {/* Star */}
+      <circle cx={cx} cy={cy} r={7.5} fill="url(#om-star)" filter="url(#om-glo)" />
+
+      {/* Orbiting planet 1 — animated */}
+      <motion.circle
+        cx={cx} cy={cy} r={3.5}
+        fill="url(#om-p1)"
+        animate={{
+          cx: [cx + orbit1.rx, cx, cx - orbit1.rx, cx, cx + orbit1.rx],
+          cy: [cy, cy - orbit1.ry, cy, cy + orbit1.ry, cy],
+        }}
+        transition={{ duration: 3.8, repeat: Infinity, ease: 'linear' }}
+      />
+
+      {/* Orbiting planet 2 — animated, offset phase */}
+      <motion.circle
+        cx={cx} cy={cy} r={2.8}
+        fill="url(#om-p2)"
+        animate={{
+          cx: [cx - orbit2.rx, cx, cx + orbit2.rx, cx, cx - orbit2.rx],
+          cy: [cy, cy + orbit2.ry, cy, cy - orbit2.ry, cy],
+        }}
+        transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
+      />
+
+      {/* Probe trajectory arc */}
+      <motion.path
+        d={`M ${cx - orbit2.rx - 4} ${cy} Q ${cx} ${cy - orbit2.ry - 10} ${cx + orbit2.rx + 4} ${cy}`}
+        fill="none" stroke="#a5f3fc" strokeWidth={1}
+        strokeDasharray="2 3" opacity={0.55}
+        animate={{ opacity: [0.3, 0.7, 0.3] }}
+        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      {/* Probe dot */}
+      <motion.circle
+        r={2} fill="#e0e7ff"
+        animate={{
+          cx: [cx - orbit2.rx - 4, cx, cx + orbit2.rx + 4],
+          cy: [cy, cy - orbit2.ry - 10, cy],
+        }}
+        transition={{ duration: 2.0, repeat: Infinity, ease: 'easeInOut', repeatDelay: 0.8 }}
+      />
+    </svg>
+  )
+}
+
 // ── Single game card ──────────────────────────────────────────────────────────
 
 function GameCard({ game, index }: { game: Game; index: number }) {
@@ -361,7 +466,9 @@ function GameCard({ game, index }: { game: Game; index: number }) {
 
       {/* ── Mini board ── */}
       <div className="flex-shrink-0 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 p-3">
-        {game.hexPreview
+        {game.orbitalPreview
+          ? <OrbitalMiniPreview />
+          : game.hexPreview
           ? <HexMiniBoard />
           : game.goPreview
           ? <GoMiniBoard />
