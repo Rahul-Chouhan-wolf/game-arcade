@@ -146,12 +146,12 @@ export class Highway {
       this.generateSegments(needed)
     }
 
-    const minFwd = -LOOK_BEHIND_PX
-    this.segments = this.segments.filter(s => {
-      const dx = s.x - carX
-      const dy = s.y - carY
-      return dx * Math.cos(carAngle) + dy * Math.sin(carAngle) > minFwd
-    })
+    // Distance-based culling — projection-based fails after road curves because
+    // segments beside the car project to fwd≈0 and are never removed.
+    const cullDist = LOOK_AHEAD_PX + LOOK_BEHIND_PX
+    this.segments = this.segments.filter(s =>
+      Math.hypot(s.x - carX, s.y - carY) < cullDist
+    )
     const minId = this.segments.length > 0 ? this.segments[0].id : 0
     this.envObjects = this.envObjects.filter(e => e.segId >= minId)
   }

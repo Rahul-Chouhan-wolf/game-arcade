@@ -58,7 +58,7 @@ const HORIZON_F  = 0.36   // horizon as Y fraction of screen height
 const FOCAL_LEN  = 360    // perspective focal length (world units)
 const CAM_HEIGHT = 115    // camera height above road (world units)
 const CAM_BEHIND = 80     // camera offset behind car (world units)
-const MAX_DEPTH  = 2200   // clip beyond this world-unit depth
+const MAX_DEPTH  = 3200   // clip beyond this world-unit depth
 
 // ─── Core projection ─────────────────────────────────────────────────────────
 
@@ -204,11 +204,11 @@ function drawPerspectiveRoad(
     ctx.closePath()
 
     if (isDrift) {
-      ctx.fillStyle = "#0e0a1e"
+      ctx.fillStyle = "#1a0e2e"   // purple tint — drift zones pop
     } else if (isCurve) {
-      ctx.fillStyle = "#0b0b1c"
+      ctx.fillStyle = "#181828"   // slightly brighter for curves
     } else {
-      ctx.fillStyle = "#0d0d1f"
+      ctx.fillStyle = "#1c1c30"   // clearly visible vs ground "#06060f"
     }
     ctx.fill()
 
@@ -286,7 +286,7 @@ function drawPerspectiveEnvObjects(
   camX: number, camY: number, camH: number,
   W: number, H: number,
 ) {
-  const horizonY = HORIZON_F * H
+  const horizonY  = HORIZON_F * H
   const segMap   = new Map<number, RoadSegment>()
   for (const s of highway.segments) segMap.set(s.id, s)
 
@@ -322,7 +322,7 @@ function drawPerspectiveEnvObjects(
     if (scale < 0.005) continue  // invisible at this distance
     switch (obj.kind) {
       case "pole":      drawProjPole(ctx, ox, oy, scale, palette); break
-      case "billboard": drawProjBillboard(ctx, ox, oy, scale, palette, (obj as EnvObject & { label?: string }).label); break
+      case "billboard": drawProjBillboard(ctx, ox, oy, scale, palette, horizonY, (obj as EnvObject & { label?: string }).label); break
       case "building":  drawProjBuilding(ctx, ox, oy, scale, palette, seg.x, seg.y); break
     }
   }
@@ -354,21 +354,24 @@ function drawProjPole(
 function drawProjBillboard(
   ctx: CanvasRenderingContext2D,
   ox: number, oy: number, scale: number,
-  palette: NeonPalette, label?: string,
+  palette: NeonPalette, horizonY: number, label?: string,
 ) {
   const poleH = Math.min(90 * scale, 500)
   const bw    = Math.max(80 * scale, 3)
   const bh    = Math.max(28 * scale, 2)
   const pw    = Math.max(2.5 * scale, 0.5)
+  // Clamp pole top to horizon so it never draws into sky
+  const poleTop = Math.max(oy - poleH, horizonY)
   // Pole
   ctx.beginPath()
   ctx.moveTo(ox, oy)
-  ctx.lineTo(ox, oy - poleH)
+  ctx.lineTo(ox, poleTop)
   ctx.strokeStyle = hex2rgba(palette.grid, 0.45)
   ctx.lineWidth   = pw
   ctx.stroke()
-  // Board
+  // Board — only draw if it fits below the horizon
   const by = oy - poleH - bh
+  if (by < horizonY) return   // board would be in the sky — skip
   ctx.fillStyle   = "rgba(0,0,0,0.88)"
   ctx.beginPath(); ctx.roundRect(ox - bw / 2, by, bw, bh, Math.max(3 * scale, 1)); ctx.fill()
   ctx.strokeStyle = palette.primary
@@ -485,12 +488,13 @@ function drawPlayerCar(
   car: CarState,
   W: number, H: number,
   palette: NeonPalette,
+  bank = 0,
 ) {
   // Car sways slightly with drift angle
   const drift  = normalizeAngle(car.driftAngle)
   const carX   = W / 2 - drift * 42
   const carY   = H * 0.815
-  const tilt   = drift * 0.10       // visual lean
+  const tilt   = drift * 0.10 + bank  // visual lean + camera bank
   const CW     = 72                 // half-width reference (full = 144)
   const CH     = 30                 // body height
 
@@ -1338,10 +1342,9 @@ export function NeonDriftGame() {
       const shakeX = shake > 0.01 ? (Math.random() - 0.5) * shake * W * 0.020 : 0
       const shakeY = shake > 0.01 ? (Math.random() - 0.5) * shake * H * 0.012 : 0
 
-      // Apply overall shake + bank via canvas transform (screen-space tilt)
+      // Apply shake only — bank is applied to player car, not the whole scene
       ctx.save()
       ctx.translate(W / 2 + shakeX, H / 2 + shakeY)
-      ctx.rotate(cam.bank)
       ctx.translate(-W / 2, -H / 2)
 
       // 1. Sky (gradient + stars + city + horizon glow + ground fill)
@@ -1370,8 +1373,8 @@ export function NeonDriftGame() {
       // 5. Screen-space particles (drift smoke / sparks)
       drawParticles(ctx, particlesRef.current)
 
-      // 6. Player car (fixed screen position, sways with drift)
-      if (playing) drawPlayerCar(ctx, car, W, H, palette)
+      // 6. Player car (fixed screen position, sways with drift + camera bank)
+      if (playing) drawPlayerCar(ctx, car, W, H, palette, cam.bank)
 
       // 7. Speed lines (converging to horizon VP)
       drawSpeedLines(ctx, W, H, car.speed, palette, t)

@@ -44,11 +44,11 @@ const COAST_DRAG      = 52    // px/s² (down from 70 — stays fast longer)
 const BRAKE_FORCE     = 440   // px/s²
 const STEER_RATE      = 2.8   // rad/s at slow speed
 const STEER_RATE_HI   = 1.55  // rad/s at max speed (was 1.8 — tighter high-speed)
-const HANDBRAKE_STEER = 4.2   // rad/s during handbrake drift (was 3.4 — snappier initiation)
+const HANDBRAKE_STEER = 2.8   // rad/s during handbrake drift (reduced — less spin-out)
 const GRIP_RATE_NORM  = 7.5   // 1/s — lateral grip (higher = snappier)
-const GRIP_RATE_DRIFT = 0.60  // 1/s — lateral grip during handbrake (was 0.75 — longer slides)
-const DRIFT_THRESH    = 0.12  // radians, min drift angle to score (was 0.14 — easier to trigger)
-const MIN_DRIFT_SPEED = 70    // px/s, min speed to count as drifting
+const GRIP_RATE_DRIFT = 0.28  // 1/s — lateral grip during handbrake (lower = longer, more satisfying slides)
+const DRIFT_THRESH    = 0.10  // radians, min drift angle to score (lower = easier to trigger)
+const MIN_DRIFT_SPEED = 50    // px/s, min speed to count as drifting
 const COMBO_TIMEOUT   = 2.0   // seconds before combo resets (was 1.8 — more forgiveness)
 const OFF_TRACK_DRAG  = 3.2   // extra drag/s² when off track
 
