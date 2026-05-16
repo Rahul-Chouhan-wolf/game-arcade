@@ -16,6 +16,8 @@ interface Game {
   tags: string[]
   accent: string
   href?: string
+  learnHref?: string        // "How to Play" link
+  studyHref?: string        // "Study Guide" link (optional extra)
   isLive?: boolean
   isNew?: boolean
   comingSoon?: boolean
@@ -36,6 +38,7 @@ const GAMES: Game[] = [
     tags: ["Word", "5 Letters", "Solo"],
     accent: "#538d4e",
     href: "/lexle",
+    learnHref: "/learn/lexle",
     isLive: true,
     preview: [
       ["correct",  "absent",   "present", "absent",  "correct" ],
@@ -51,6 +54,7 @@ const GAMES: Game[] = [
     tags: ["Strategy", "2 Players", "Local"],
     accent: "#c77dff",
     href: "/boxle",
+    learnHref: "/learn/boxle",
     isLive: true,
     dotPreview: true,
   },
@@ -62,6 +66,7 @@ const GAMES: Game[] = [
     tags: ["Strategy", "2 Players", "Board"],
     accent: "#e8b86d",
     href: "/go",
+    learnHref: "/learn",
     isLive: true,
     goPreview: true,
   },
@@ -73,6 +78,7 @@ const GAMES: Game[] = [
     tags: ["Strategy", "2 Players", "Hex"],
     accent: "#22d3ee",
     href: "/hexle",
+    learnHref: "/learn/hexle",
     isLive: true,
     isNew: true,
     hexPreview: true,
@@ -405,23 +411,38 @@ function GameCard({ game, index }: { game: Game; index: number }) {
           ))}
         </div>
 
-        {/* play button */}
+        {/* buttons */}
         {game.comingSoon ? (
           <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold uppercase tracking-widest text-white/20 cursor-not-allowed select-none">
             Coming Soon
           </span>
         ) : (
-          <Link
-            href={game.href ?? "#"}
-            className="inline-flex items-center gap-2 rounded-full px-5 py-3 text-xs font-extrabold uppercase tracking-widest text-white transition-all duration-200 active:scale-95 shadow-lg min-h-[44px]"
-            style={{
-              background: game.accent,
-              boxShadow: `0 4px 20px ${game.accent}40`,
-            }}
-          >
-            <Play className="w-3.5 h-3.5 fill-white" />
-            Play Now
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={game.href ?? "#"}
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-extrabold uppercase tracking-widest text-white transition-all duration-200 active:scale-95 shadow-lg min-h-[44px]"
+              style={{
+                background: game.accent,
+                boxShadow: `0 4px 20px ${game.accent}40`,
+              }}
+            >
+              <Play className="w-3 h-3 fill-white" />
+              Play
+            </Link>
+            {game.learnHref && (
+              <Link
+                href={game.learnHref}
+                className="inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-widest transition-all duration-200 active:scale-95 min-h-[44px]"
+                style={{
+                  border: `1px solid ${game.accent}50`,
+                  color: game.accent,
+                  background: `${game.accent}0e`,
+                }}
+              >
+                How to Play
+              </Link>
+            )}
+          </div>
         )}
       </div>
     </motion.div>
