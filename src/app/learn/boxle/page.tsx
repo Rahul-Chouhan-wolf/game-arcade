@@ -25,7 +25,7 @@ export default function BoxleLearnRoute() {
     <div className="min-h-screen flex flex-col" style={{ background: '#0a0a14' }}>
       <header className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 border-b border-white/8"
               style={{ background: 'rgba(10,10,20,0.92)', backdropFilter: 'blur(16px)' }}>
-        <Link href="/boxle" className="text-xs font-bold text-white/40 hover:text-white/70 transition-colors" style={{ minHeight:44, display:'flex', alignItems:'center' }}>← Boxle</Link>
+        <Link href="/" className="text-xs font-bold text-white/40 hover:text-white/70 transition-colors" style={{ minHeight:44, display:'flex', alignItems:'center' }}>← Back</Link>
         <div className="text-center">
           <p className="text-[11px] font-extrabold tracking-widest text-white uppercase">How to Play</p>
           <p className="text-[9px] text-white/30 tracking-widest">Boxle</p>
