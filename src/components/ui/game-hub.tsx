@@ -21,10 +21,11 @@ interface Game {
   isLive?: boolean
   isNew?: boolean
   comingSoon?: boolean
-  preview?: TileState[][]   // word-tile preview (Lexle)
-  dotPreview?: boolean      // dots-and-boxes preview (Boxle)
-  goPreview?: boolean       // go board preview (Go)
-  hexPreview?: boolean      // hex board preview (Hexle)
+  preview?: TileState[][]      // word-tile preview (Lexle)
+  dotPreview?: boolean         // dots-and-boxes preview (Boxle)
+  goPreview?: boolean          // go board preview (Go)
+  hexPreview?: boolean         // hex board preview (Hexle)
+  cryptogramPreview?: boolean  // cryptogram cipher preview
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -82,6 +83,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     hexPreview: true,
+  },
+  {
+    id: "cryptogram",
+    name: "Cryptogram",
+    tagline: "Decrypt the message. Break the cipher.",
+    description: "Each letter hides behind a substitute. Find the pattern, map the alphabet, reveal the quote. Premium code-breaking puzzle.",
+    tags: ["Puzzle", "Cipher", "Solo"],
+    accent: "#00d4aa",
+    href: "/cryptogram",
+    isLive: true,
+    isNew: true,
+    cryptogramPreview: true,
   },
 ]
 
@@ -342,6 +355,100 @@ function HexMiniBoard() {
   )
 }
 
+// ── Cryptogram cipher mini preview ───────────────────────────────────────────
+
+function CryptogramMiniPreview() {
+  const W = 88, H = 72
+  const ACCENT_CG = '#00d4aa'
+  const GOLD_CG   = '#f0b429'
+  const GREEN_CG  = '#22c55e'
+
+  // Example cipher cells: cipher on top, guess below
+  const cells = [
+    { cipher: 'X', guess: 'T', correct: true,  x: 10 },
+    { cipher: 'Y', guess: 'H', correct: true,  x: 30 },
+    { cipher: 'Z', guess: 'E', correct: true,  x: 50 },
+    { cipher: 'W', guess: '',  correct: false, x: 70 },
+  ]
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
+      <rect x={0} y={0} width={W} height={H} rx={6} fill="#060a12" />
+
+      {/* Flowing cipher chars in background */}
+      {[14, 42, 68].map((bx, i) => (
+        <motion.text
+          key={i}
+          x={bx} y={18}
+          textAnchor="middle"
+          style={{ fontFamily: 'monospace', fontSize: 9, fill: ACCENT_CG, opacity: 0.12 }}
+          animate={{ opacity: [0.08, 0.18, 0.08] }}
+          transition={{ duration: 2.5 + i * 0.7, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          {['A','N','E'][i]}
+        </motion.text>
+      ))}
+
+      {/* Letter cells */}
+      {cells.map(({ cipher, guess, correct, x }, i) => {
+        const borderCol = correct ? GREEN_CG : guess ? ACCENT_CG : 'rgba(255,255,255,0.15)'
+        const textCol   = correct ? GREEN_CG : guess ? '#fff' : 'rgba(255,255,255,0)'
+        return (
+          <g key={i}>
+            {/* Guess box */}
+            <motion.rect
+              x={x - 8} y={22} width={16} height={16} rx={3}
+              fill={correct ? `${GREEN_CG}18` : 'transparent'}
+              stroke={borderCol} strokeWidth={1.2}
+              initial={{ opacity: 0, scale: 0 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 + i * 0.18, type: 'spring', damping: 14, stiffness: 260 }}
+              style={{ transformOrigin: `${x}px 30px` }}
+            />
+            {/* Guess letter */}
+            {guess && (
+              <motion.text
+                x={x} y={34}
+                textAnchor="middle"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.45 + i * 0.18 }}
+                style={{ fontFamily: 'monospace', fontSize: 9, fontWeight: 700, fill: textCol }}
+              >
+                {guess}
+              </motion.text>
+            )}
+            {/* Cipher letter underline */}
+            <line x1={x - 7} y1={50} x2={x + 7} y2={50} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
+            <text
+              x={x} y={49}
+              textAnchor="middle"
+              style={{ fontFamily: 'monospace', fontSize: 8, fill: 'rgba(255,255,255,0.35)' }}
+            >
+              {cipher}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* Active cursor on the last cell */}
+      <motion.rect
+        x={70 - 8} y={22} width={16} height={16} rx={3}
+        fill="transparent"
+        stroke={GOLD_CG} strokeWidth={1.5}
+        animate={{ opacity: [1, 0.3, 1] }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      {/* "DECODE" label faint */}
+      <text x={W / 2} y={66} textAnchor="middle"
+        style={{ fontFamily: 'monospace', fontSize: 7, fill: ACCENT_CG, opacity: 0.35, letterSpacing: '0.15em' }}>
+        DECODE
+      </text>
+    </svg>
+  )
+}
+
 // ── Single game card ──────────────────────────────────────────────────────────
 
 function GameCard({ game, index }: { game: Game; index: number }) {
@@ -361,7 +468,9 @@ function GameCard({ game, index }: { game: Game; index: number }) {
 
       {/* ── Mini board ── */}
       <div className="flex-shrink-0 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 p-3">
-        {game.hexPreview
+        {game.cryptogramPreview
+          ? <CryptogramMiniPreview />
+          : game.hexPreview
           ? <HexMiniBoard />
           : game.goPreview
           ? <GoMiniBoard />
