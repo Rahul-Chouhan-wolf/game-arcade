@@ -177,15 +177,19 @@ function Dice3D({ value, rolling, canRoll, size, accentColor, onClick, diceRolle
     finalRy.current = 720 + ry;
   }
 
-  // Each face: slightly different white shade for 3D depth
+  // Each face: gradient + inner shadow for 3D depth
   const faceStyle = (transform: string, shade: string): React.CSSProperties => ({
     position: "absolute",
     width: size,
     height: size,
     borderRadius: size * 0.16,
-    background: `linear-gradient(145deg, ${shade}, #f0ede4)`,
-    border: "1px solid #ccc8bb",
-    boxShadow: "inset 0 1px 2px rgba(255,255,255,0.7), inset 0 -1px 2px rgba(0,0,0,0.06)",
+    background: `linear-gradient(145deg, ${shade}, #ede9df)`,
+    border: "1px solid #b8b4aa",
+    boxShadow:
+      "inset 0 2px 4px rgba(255,255,255,0.8), " +
+      "inset 0 -2px 4px rgba(0,0,0,0.1), " +
+      "inset 2px 0 4px rgba(255,255,255,0.3), " +
+      "inset -2px 0 4px rgba(0,0,0,0.05)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -264,6 +268,7 @@ function Dice3D({ value, rolling, canRoll, size, accentColor, onClick, diceRolle
           height: size,
           position: "relative",
           transformStyle: "preserve-3d",
+          filter: `drop-shadow(0 ${size * 0.08}px ${size * 0.15}px rgba(0,0,0,0.35)) drop-shadow(0 ${size * 0.02}px ${size * 0.04}px rgba(0,0,0,0.2))`,
         }}
       >
         {/* Face 1 — front */}
@@ -694,6 +699,9 @@ export function LudoGame() {
   // Dice display value during roll
   const [diceDisplay, setDiceDisplay] = useState(1);
 
+  // Keeps dice in the previous player's yard while the result is shown
+  const [diceYardOverride, setDiceYardOverride] = useState<PlayerColor | null>(null);
+
   useEffect(() => { gsRef.current = gs; }, [gs]);
 
   // Responsive: fill screen
@@ -735,8 +743,8 @@ export function LudoGame() {
 
       const doStep = () => {
         if (step >= path.length) {
-          setAnimTok(null);
-          setAnimPos(null);
+          // Keep animTok/animPos at final position — cleared in applyFinal
+          // after state is committed so there's no blink-back
           animLock.current = false;
           applyFinal(result, cb);
           return;
@@ -766,33 +774,40 @@ export function LudoGame() {
       flash(`${result.capturedToken.color.toUpperCase()} captured!`, 2200);
     }
 
-    // Brief pause so the dice result stays visible before turn switches
-    const commitState = () => {
-      setGs(result.newState);
-
-      // Check game end
-      if (result.newState.phase === "gameover") {
-        audio.victory();
-        const hp = result.newState.players.find((p) => p.type === "human");
-        const won = hp ? result.newState.finishOrder[0] === hp.color : false;
-        const ns = updateStats(stats, won, gameCaptures + (result.captured ? 1 : 0));
-        setStats(ns);
-        saveStats(ns);
-      }
-
-      cb?.();
-    };
-
-    // If the next state keeps the same player (rolled 6), commit immediately
-    // Otherwise delay so the rolled value stays visible
     const samePlayer =
       result.newState.currentPlayerIndex ===
       (gsRef.current?.currentPlayerIndex ?? -1);
 
+    const prevColor = gsRef.current
+      ? getCurrentPlayer(gsRef.current).color
+      : null;
+
+    // Apply state immediately — this updates all token positions (no blink-back)
+    setGs(result.newState);
+    // Clear animation overlay — token now reads position from updated state
+    setAnimTok(null);
+    setAnimPos(null);
+
+    // Check game end
+    if (result.newState.phase === "gameover") {
+      audio.victory();
+      const hp = result.newState.players.find((p) => p.type === "human");
+      const won = hp ? result.newState.finishOrder[0] === hp.color : false;
+      const ns = updateStats(stats, won, gameCaptures + (result.captured ? 1 : 0));
+      setStats(ns);
+      saveStats(ns);
+    }
+
     if (samePlayer) {
-      commitState();
+      // Same player continues (rolled 6) — no delay needed
+      cb?.();
     } else {
-      setTimeout(commitState, 1000);
+      // Turn changes — keep dice in old yard for 1s so result stays visible
+      if (prevColor) setDiceYardOverride(prevColor);
+      setTimeout(() => {
+        setDiceYardOverride(null);
+        cb?.();
+      }, 1000);
     }
   }
 
@@ -867,6 +882,7 @@ export function LudoGame() {
     setAnimTok(null);
     setAnimPos(null);
     setDiceDisplay(1);
+    setDiceYardOverride(null);
   }, []);
 
   const handleRoll = useCallback(() => {
@@ -927,13 +943,14 @@ export function LudoGame() {
   const pal = C[cp.color];
   const isGameOver = gs.phase === "gameover";
 
-  // Dice position — in current player's yard
-  const [dRow, dCol] = YARD_CENTER[cp.color];
+  // Dice position — use override (keeps dice in old yard while result shows)
+  const diceColor = diceYardOverride ?? cp.color;
+  const [dRow, dCol] = YARD_CENTER[diceColor];
   const diceLeft = dCol * cs;
   const diceTop = dRow * cs;
 
-  // Can roll?
-  const canRoll = !gs.diceRolled && !rolling && !animLock.current && cp.type === "human" && !isGameOver;
+  // Can roll? Block rolling while dice is still showing result in old yard
+  const canRoll = !gs.diceRolled && !rolling && !animLock.current && cp.type === "human" && !isGameOver && !diceYardOverride;
 
   return (
     <div style={{
