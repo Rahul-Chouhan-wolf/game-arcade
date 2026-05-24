@@ -26,18 +26,18 @@ interface Particle {
 const X_COLOR   = "#ff2d87"
 const O_COLOR   = "#00d8ff"
 const WIN_COLOR = "#ffd700"
-const GRID_COLOR = "rgba(0,216,255,0.28)"
+const GRID_COLOR = "rgba(0,216,255,0.55)"
 
 // Win line SVG coordinates (300×300 viewBox, grid lines at 100 and 200)
 const WIN_LINE_COORDS: Record<string, [number, number, number, number]> = {
-  "0,1,2": [14, 50, 286, 50],
-  "3,4,5": [14, 150, 286, 150],
-  "6,7,8": [14, 250, 286, 250],
-  "0,3,6": [50, 14, 50, 286],
-  "1,4,7": [150, 14, 150, 286],
-  "2,5,8": [250, 14, 250, 286],
-  "0,4,8": [14, 14, 286, 286],
-  "2,4,6": [286, 14, 14, 286],
+  "0,1,2": [10,  50, 290,  50],
+  "3,4,5": [10, 150, 290, 150],
+  "6,7,8": [10, 250, 290, 250],
+  "0,3,6": [50,  10,  50, 290],
+  "1,4,7": [150, 10, 150, 290],
+  "2,5,8": [250, 10, 250, 290],
+  "0,4,8": [10,  10, 290, 290],
+  "2,4,6": [290, 10,  10, 290],
 }
 
 const DIFFICULTY_LABELS: Record<Difficulty, { label: string; desc: string; color: string }> = {
@@ -176,14 +176,14 @@ function BoardCell({
       className="relative flex items-center justify-center select-none"
       style={{
         cursor: canInteract ? "pointer" : "default",
-        background: isWinCell ? `${WIN_COLOR}08` : "transparent",
-        transition: "background 0.3s",
+        background: isWinCell ? `${WIN_COLOR}12` : "transparent",
+        transition: "background 0.35s ease",
       }}
       onMouseEnter={canInteract ? onEnter : undefined}
       onMouseLeave={onLeave}
       onClick={canInteract ? onClick : undefined}
       onTouchEnd={canInteract ? (e) => { e.preventDefault(); onClick() } : undefined}
-      whileHover={canInteract ? { background: "rgba(255,255,255,0.04)" } : {}}
+      whileHover={canInteract ? { background: "rgba(0,216,255,0.07)" } : {}}
     >
       {/* Ghost preview on hover */}
       <AnimatePresence>
@@ -237,53 +237,84 @@ interface BoardProps {
 
 function GameBoard({ board, winLine, current, disabled, onMove }: BoardProps) {
   const [hovered, setHovered] = useState<number | null>(null)
-
   const winSet = new Set(winLine ?? [])
 
   return (
-    <div className="relative w-full" style={{ maxWidth: 360, aspectRatio: "1 / 1" }}>
-      {/* SVG grid lines */}
+    <div
+      className="relative w-full mx-auto"
+      style={{
+        maxWidth: 360,
+        aspectRatio: "1 / 1",
+        background: "linear-gradient(145deg, rgba(8,4,36,0.97) 0%, rgba(4,2,22,0.99) 100%)",
+        border: "2px solid rgba(0,216,255,0.38)",
+        borderRadius: 20,
+        boxShadow: [
+          "0 0 0 1px rgba(0,216,255,0.10)",
+          "0 0 50px rgba(0,216,255,0.10)",
+          "0 0 100px rgba(255,45,135,0.05)",
+          "inset 0 0 48px rgba(0,0,0,0.55)",
+        ].join(", "),
+        overflow: "hidden",
+      }}
+    >
+      {/* SVG layer: grid lines + intersection dots + win line */}
       <svg
         className="absolute inset-0 w-full h-full pointer-events-none"
         viewBox="0 0 300 300"
       >
         <defs>
-          <filter id="grid-glow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
+          <filter id="grid-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
 
-        {/* Vertical lines */}
+        {/* Vertical lines — full height */}
         {[100, 200].map((x, i) => (
           <motion.line
             key={`v${i}`}
-            x1={x} y1={12} x2={x} y2={288}
-            stroke={GRID_COLOR} strokeWidth={1.5}
+            x1={x} y1={0} x2={x} y2={300}
+            stroke={GRID_COLOR} strokeWidth={2}
             filter="url(#grid-glow)"
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
-            transition={{ duration: 0.5, delay: 0.08 + i * 0.08, ease: "easeOut" }}
+            transition={{ duration: 0.55, delay: 0.06 + i * 0.08, ease: "easeOut" }}
           />
         ))}
-        {/* Horizontal lines */}
+        {/* Horizontal lines — full width */}
         {[100, 200].map((y, i) => (
           <motion.line
             key={`h${i}`}
-            x1={12} y1={y} x2={288} y2={y}
-            stroke={GRID_COLOR} strokeWidth={1.5}
+            x1={0} y1={y} x2={300} y2={y}
+            stroke={GRID_COLOR} strokeWidth={2}
             filter="url(#grid-glow)"
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
-            transition={{ duration: 0.5, delay: 0.12 + i * 0.08, ease: "easeOut" }}
+            transition={{ duration: 0.55, delay: 0.10 + i * 0.08, ease: "easeOut" }}
           />
         ))}
+
+        {/* Intersection glow dots */}
+        {[100, 200].flatMap(x =>
+          [100, 200].map(y => (
+            <motion.circle
+              key={`dot-${x}-${y}`}
+              cx={x} cy={y} r={3.5}
+              fill={GRID_COLOR}
+              filter="url(#grid-glow)"
+              initial={{ opacity: 0, scale: 0 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.45, duration: 0.25, ease: "backOut" }}
+              style={{ transformOrigin: `${x}px ${y}px` }}
+            />
+          ))
+        )}
 
         {/* Win line */}
         {winLine && <WinLineOverlay line={winLine} />}
       </svg>
 
-      {/* Cell grid */}
+      {/* Cell grid — sits on top of SVG */}
       <div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
         {board.map((cell, i) => (
           <BoardCell
