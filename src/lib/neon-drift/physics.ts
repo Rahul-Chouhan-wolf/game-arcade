@@ -53,9 +53,12 @@ const COMBO_TIMEOUT   = 2.0   // seconds before combo resets (was 1.8 — more f
 const OFF_TRACK_DRAG  = 3.2   // extra drag/s² when off track
 
 export function createCar(x: number, y: number, heading: number): CarState {
+  const initSpd = 120
   return {
     x, y, heading,
-    vx: 0, vy: 0, speed: 0,
+    vx: Math.cos(heading) * initSpd,
+    vy: Math.sin(heading) * initSpd,
+    speed: initSpd,
     driftAngle: 0, drifting: false,
     score: 0, combo: 1, comboTimer: 0,
     curDriftPts: 0, driftTime: 0,
@@ -94,9 +97,14 @@ export function stepCar(
   }
 
   // ── Engine + braking ──────────────────────────────────────────────────────
-  if (input.throttle && car.speed < MAX_SPEED) {
-    vx += Math.cos(heading) * ACCEL * dt
-    vy += Math.sin(heading) * ACCEL * dt
+  // Auto-throttle: if coasting below 80 px/s, gently maintain minimum speed
+  const curSpd0     = Math.hypot(vx, vy)
+  const autoThrottle = !input.brake && !input.handbrake && curSpd0 < 80
+
+  if ((input.throttle || autoThrottle) && curSpd0 < MAX_SPEED) {
+    const acc = autoThrottle && !input.throttle ? ACCEL * 0.35 : ACCEL
+    vx += Math.cos(heading) * acc * dt
+    vy += Math.sin(heading) * acc * dt
   }
 
   const curSpd = Math.hypot(vx, vy)
@@ -107,7 +115,7 @@ export function stepCar(
     if (input.brake) {
       const b = Math.min(BRAKE_FORCE * dt, curSpd)
       vx -= ux * b; vy -= uy * b
-    } else if (!input.throttle) {
+    } else if (!input.throttle && !autoThrottle) {
       const c = Math.min(COAST_DRAG * dt, curSpd)
       vx -= ux * c; vy -= uy * c
     }

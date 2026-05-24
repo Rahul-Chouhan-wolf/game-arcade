@@ -185,6 +185,18 @@ function drawPerspectiveRoad(
 
   if (segs.length < 2) return
 
+  // Pre-compute how far the nearest segment is from the screen bottom, and
+  // extrapolate road edges so the road always fills to H (no dark gap).
+  const extNear    = segs[segs.length - 1]
+  const extPrev    = segs[segs.length - 2]
+  const extNearSY  = Math.max(extNear.sy, horizonY)
+  const extPrevSY  = Math.max(extPrev.sy, horizonY)
+  const extDY      = extNearSY - extPrevSY
+  const needsExt   = extNearSY < H && extDY > 0.5
+  const extT       = needsExt ? (H + 4 - extNearSY) / extDY : 0
+  const extLx      = extNear.lx + (extNear.lx - extPrev.lx) * extT
+  const extRx      = extNear.rx + (extNear.rx - extPrev.rx) * extT
+
   // ── Road surface (trapezoids) ──────────────────────────────────────────────
   for (let i = 0; i < segs.length - 1; i++) {
     const far  = segs[i]
@@ -228,6 +240,22 @@ function drawPerspectiveRoad(
     }
   }
 
+  // Fill the gap between the nearest projected segment and the bottom of screen
+  if (needsExt) {
+    const roadColor = extNear.type === "drift-zone" || extNear.type === "sweeper"
+      ? "#1a0e2e"
+      : extNear.type === "curve-left" || extNear.type === "curve-right"
+      ? "#181828" : "#1c1c30"
+    ctx.beginPath()
+    ctx.moveTo(extNear.lx, extNearSY)
+    ctx.lineTo(extNear.rx, extNearSY)
+    ctx.lineTo(extRx, H + 4)
+    ctx.lineTo(extLx, H + 4)
+    ctx.closePath()
+    ctx.fillStyle = roadColor
+    ctx.fill()
+  }
+
   // ── Centre lane dashes (speed-animated) ───────────────────────────────────
   const dashPhase = (t * carSpeed * 0.004) % 1
   for (let i = 0; i < segs.length - 1; i++) {
@@ -253,6 +281,7 @@ function drawPerspectiveRoad(
     if (first) { ctx.moveTo(s.lx, sy); first = false }
     else ctx.lineTo(s.lx, sy)
   }
+  if (needsExt) ctx.lineTo(extLx, H + 4)
   ctx.strokeStyle  = palette.primary
   ctx.lineWidth    = 2.5
   ctx.shadowColor  = palette.glow
@@ -269,6 +298,7 @@ function drawPerspectiveRoad(
     if (first) { ctx.moveTo(s.rx, sy); first = false }
     else ctx.lineTo(s.rx, sy)
   }
+  if (needsExt) ctx.lineTo(extRx, H + 4)
   ctx.strokeStyle = palette.secondary
   ctx.lineWidth   = 2.5
   ctx.shadowColor = palette.glow

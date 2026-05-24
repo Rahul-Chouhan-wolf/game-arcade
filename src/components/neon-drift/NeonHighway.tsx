@@ -179,7 +179,7 @@ function drawGround(
   const g = ctx.createLinearGradient(0, VPY, 0, H)
   g.addColorStop(0, hex2rgba(palette.bgMid, 0.7))
   g.addColorStop(0.25, hex2rgba(palette.bg, 0.95))
-  g.addColorStop(1, "#000000")
+  g.addColorStop(1, palette.bg)
   ctx.fillStyle = g
   ctx.fillRect(0, VPY, W, H - VPY)
 }
