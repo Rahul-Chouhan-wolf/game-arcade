@@ -25,6 +25,7 @@ interface Game {
   dotPreview?: boolean      // dots-and-boxes preview (Boxle)
   goPreview?: boolean       // go board preview (Go)
   hexPreview?: boolean      // hex board preview (Hexle)
+  tictactoePreview?: boolean // tic tac toe preview
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -82,6 +83,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     hexPreview: true,
+  },
+  {
+    id: "tictactoe",
+    name: "Tic Tac Toe",
+    tagline: "Classic grid war — outsmart or be outsmarted",
+    description: "Play locally against a friend or challenge the AI. Four difficulty levels including an unbeatable Impossible mode powered by minimax.",
+    tags: ["Classic", "vs AI", "Local PvP"],
+    accent: "#ff2d87",
+    href: "/tictactoe",
+    isLive: true,
+    isNew: true,
+    tictactoePreview: true,
   },
 ]
 
@@ -342,6 +355,119 @@ function HexMiniBoard() {
   )
 }
 
+// ── Tic Tac Toe mini preview ──────────────────────────────────────────────────
+
+const TTT_GRID_SIZE = 72
+const TTT_CELL      = TTT_GRID_SIZE / 3
+
+type TTTCell = "X" | "O" | null
+const TTT_BOARD: TTTCell[] = ["X", null, "O", null, "X", null, "O", null, "X"]
+
+function TicTacToeMiniPreview() {
+  const pad   = 4
+  const total = TTT_GRID_SIZE + pad * 2
+  const gridColor = "rgba(0,216,255,0.35)"
+
+  function cellCenter(i: number): [number, number] {
+    const c = i % 3
+    const r = Math.floor(i / 3)
+    return [pad + c * TTT_CELL + TTT_CELL / 2, pad + r * TTT_CELL + TTT_CELL / 2]
+  }
+
+  const winCells = new Set([0, 4, 8])
+
+  return (
+    <svg viewBox={`0 0 ${total} ${total}`} width={total} height={total}>
+      <defs>
+        <filter id="ttm-glow-x">
+          <feGaussianBlur stdDeviation="1.2" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+        <filter id="ttm-glow-o">
+          <feGaussianBlur stdDeviation="1.2" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+        <filter id="ttm-glow-win">
+          <feGaussianBlur stdDeviation="2" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+
+      {/* grid lines */}
+      {[1, 2].map(i => (
+        <g key={i}>
+          <line
+            x1={pad + i * TTT_CELL} y1={pad}
+            x2={pad + i * TTT_CELL} y2={pad + TTT_GRID_SIZE}
+            stroke={gridColor} strokeWidth={1}
+          />
+          <line
+            x1={pad} y1={pad + i * TTT_CELL}
+            x2={pad + TTT_GRID_SIZE} y2={pad + i * TTT_CELL}
+            stroke={gridColor} strokeWidth={1}
+          />
+        </g>
+      ))}
+
+      {/* diagonal win line */}
+      <motion.line
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 1 }}
+        transition={{ delay: 0.7, duration: 0.35, ease: "easeOut" }}
+        x1={pad + 0 * TTT_CELL + TTT_CELL / 2 - 5}
+        y1={pad + 0 * TTT_CELL + TTT_CELL / 2 - 5}
+        x2={pad + 2 * TTT_CELL + TTT_CELL / 2 + 5}
+        y2={pad + 2 * TTT_CELL + TTT_CELL / 2 + 5}
+        stroke="#ffd700" strokeWidth={1.5} strokeLinecap="round"
+        filter="url(#ttm-glow-win)"
+      />
+
+      {/* symbols */}
+      {TTT_BOARD.map((cell, i) => {
+        if (!cell) return null
+        const [cx, cy] = cellCenter(i)
+        const isWin = winCells.has(i)
+        const s = TTT_CELL * 0.28
+
+        if (cell === "X") {
+          const color = isWin ? "#ffd700" : "#ff2d87"
+          return (
+            <g key={i} filter="url(#ttm-glow-x)">
+              <motion.line
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: 1, opacity: 1 }}
+                transition={{ delay: 0.1 + i * 0.07, duration: 0.2 }}
+                x1={cx - s} y1={cy - s} x2={cx + s} y2={cy + s}
+                stroke={color} strokeWidth={2} strokeLinecap="round"
+              />
+              <motion.line
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: 1, opacity: 1 }}
+                transition={{ delay: 0.18 + i * 0.07, duration: 0.2 }}
+                x1={cx + s} y1={cy - s} x2={cx - s} y2={cy + s}
+                stroke={color} strokeWidth={2} strokeLinecap="round"
+              />
+            </g>
+          )
+        } else {
+          const color = isWin ? "#ffd700" : "#00d8ff"
+          return (
+            <motion.circle
+              key={i}
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ delay: 0.1 + i * 0.07, duration: 0.25 }}
+              cx={cx} cy={cy} r={s}
+              fill="none" stroke={color} strokeWidth={2}
+              filter="url(#ttm-glow-o)"
+            />
+          )
+        }
+      })}
+    </svg>
+  )
+}
+
 // ── Single game card ──────────────────────────────────────────────────────────
 
 function GameCard({ game, index }: { game: Game; index: number }) {
@@ -367,6 +493,8 @@ function GameCard({ game, index }: { game: Game; index: number }) {
           ? <GoMiniBoard />
           : game.dotPreview
           ? <BoxMiniBoard />
+          : game.tictactoePreview
+          ? <TicTacToeMiniPreview />
           : <MiniBoard rows={game.preview ?? []} accent={game.accent} />
         }
       </div>
