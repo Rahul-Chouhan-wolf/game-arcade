@@ -169,14 +169,23 @@ function Dice3D({ value, rolling, canRoll, size, accentColor, onClick, diceRolle
   const { rx, ry } = FACE_ROTATIONS[value] || FACE_ROTATIONS[1];
   const dotR = 10;
 
-  // Each face has a slightly different white shade for 3D depth
+  // Track the target rotation so we don't reverse-spin when rolling stops
+  const finalRx = useRef(rx);
+  const finalRy = useRef(ry);
+  if (rolling) {
+    finalRx.current = 720 + rx;
+    finalRy.current = 720 + ry;
+  }
+
+  // Each face: slightly different white shade for 3D depth
   const faceStyle = (transform: string, shade: string): React.CSSProperties => ({
     position: "absolute",
     width: size,
     height: size,
     borderRadius: size * 0.16,
-    background: shade,
-    border: "1.5px solid #d4d0c8",
+    background: `linear-gradient(145deg, ${shade}, #f0ede4)`,
+    border: "1px solid #ccc8bb",
+    boxShadow: "inset 0 1px 2px rgba(255,255,255,0.7), inset 0 -1px 2px rgba(0,0,0,0.06)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -185,61 +194,83 @@ function Dice3D({ value, rolling, canRoll, size, accentColor, onClick, diceRolle
   });
 
   return (
-    <div style={{ perspective: size * 4, cursor: canRoll ? "pointer" : "default" }}
+    <div
+      style={{
+        perspective: size * 5,
+        perspectiveOrigin: "50% 40%",
+        cursor: canRoll ? "pointer" : "default",
+        position: "relative",
+        width: size,
+        height: size + 8,
+      }}
       onClick={canRoll ? onClick : undefined}
     >
-      {/* Animated shadow under dice */}
+      {/* Ground shadow */}
       <motion.div
         animate={rolling
-          ? { scale: [1, 0.6, 1.1, 0.7, 1], opacity: [0.25, 0.1, 0.3, 0.12, 0.22] }
-          : { scale: 1, opacity: 0.22 }
+          ? { scaleX: [1, 0.5, 1.2, 0.6, 1], scaleY: [1, 0.5, 1.2, 0.6, 1], opacity: [0.3, 0.08, 0.35, 0.1, 0.25] }
+          : { scaleX: 1, scaleY: 1, opacity: 0.25 }
         }
-        transition={rolling ? { duration: 0.8, ease: "easeInOut" } : { duration: 0.3 }}
+        transition={rolling ? { duration: 0.8 } : { duration: 0.3 }}
         style={{
           position: "absolute",
-          bottom: -4,
+          bottom: 0,
           left: "50%",
           width: size * 0.7,
-          height: size * 0.18,
+          height: size * 0.15,
+          marginLeft: -(size * 0.7) / 2,
           borderRadius: "50%",
-          background: "rgba(0,0,0,0.35)",
-          transform: "translateX(-50%)",
-          filter: "blur(3px)",
+          background: "radial-gradient(ellipse, rgba(0,0,0,0.4) 0%, transparent 70%)",
           pointerEvents: "none",
         }}
       />
 
-      {/* 3D cube wrapper */}
+      {/* 3D cube */}
       <motion.div
         animate={rolling
           ? {
-              rotateX: [0, 320, 640, 720 + rx],
-              rotateY: [0, 280, 480, 720 + ry],
-              rotateZ: [0, -120, 60, 0],
-              y: [0, -size * 1.2, -size * 0.4, -size * 0.8, 0],
-              scale: [1, 1.05, 0.95, 1.02, 1],
+              rotateX: [finalRx.current - 720, finalRx.current - 400, finalRx.current - 80, finalRx.current],
+              rotateY: [finalRy.current - 720, finalRy.current - 400, finalRy.current - 80, finalRy.current],
+              rotateZ: [0, -100, 40, 0],
+              y: [0, -size * 1.3, -size * 0.3, 0],
             }
-          : { rotateX: rx, rotateY: ry, rotateZ: 0, y: 0, scale: 1 }
+          : {
+              rotateX: finalRx.current,
+              rotateY: finalRy.current,
+              rotateZ: 0,
+              y: 0,
+            }
         }
         transition={rolling
-          ? { duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94], times: undefined }
-          : { duration: 0.35, ease: "easeOut" }
+          ? {
+              duration: 0.85,
+              ease: [0.22, 0.68, 0.35, 1.0],
+              rotateX: { duration: 0.85, ease: [0.22, 0.68, 0.35, 1.0] },
+              rotateY: { duration: 0.85, ease: [0.22, 0.68, 0.35, 1.0] },
+              y: { duration: 0.85, times: [0, 0.3, 0.7, 1], ease: "easeOut" },
+            }
+          : {
+              // Instant snap — no reverse spin when rolling stops
+              rotateX: { duration: 0 },
+              rotateY: { duration: 0 },
+              rotateZ: { duration: 0 },
+              y: { type: "spring", stiffness: 400, damping: 20 },
+            }
         }
-        whileHover={canRoll ? { scale: 1.1, y: -4 } : {}}
-        whileTap={canRoll ? { scale: 0.9 } : {}}
+        whileHover={canRoll ? { y: -5, scale: 1.08 } : {}}
+        whileTap={canRoll ? { scale: 0.92 } : {}}
         style={{
           width: size,
           height: size,
           position: "relative",
           transformStyle: "preserve-3d",
-          opacity: diceRolled && !rolling ? 0.9 : 1,
         }}
       >
         {/* Face 1 — front */}
         <div style={faceStyle(`translateZ(${half}px)`, "#fffef8")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
             {DOTS[1].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
             ))}
           </svg>
         </div>
@@ -247,39 +278,39 @@ function Dice3D({ value, rolling, canRoll, size, accentColor, onClick, diceRolle
         <div style={faceStyle(`rotateY(180deg) translateZ(${half}px)`, "#f8f6ee")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
             {DOTS[6].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
             ))}
           </svg>
         </div>
-        {/* Face 2 — bottom (rotateX -90) */}
+        {/* Face 2 — bottom */}
         <div style={faceStyle(`rotateX(-90deg) translateZ(${half}px)`, "#faf8f0")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
             {DOTS[2].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
             ))}
           </svg>
         </div>
-        {/* Face 5 — top (rotateX 90) */}
+        {/* Face 5 — top */}
         <div style={faceStyle(`rotateX(90deg) translateZ(${half}px)`, "#f9f7ef")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
             {DOTS[5].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
             ))}
           </svg>
         </div>
-        {/* Face 3 — right (rotateY 90) */}
+        {/* Face 3 — right */}
         <div style={faceStyle(`rotateY(90deg) translateZ(${half}px)`, "#fcfaf2")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
             {DOTS[3].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
             ))}
           </svg>
         </div>
-        {/* Face 4 — left (rotateY -90) */}
+        {/* Face 4 — left */}
         <div style={faceStyle(`rotateY(-90deg) translateZ(${half}px)`, "#fdfbf3")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
             {DOTS[4].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
             ))}
           </svg>
         </div>
