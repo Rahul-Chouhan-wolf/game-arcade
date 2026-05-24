@@ -40,30 +40,102 @@ import {
 import { LudoAudio } from "@/lib/ludo/audio";
 
 // ─────────────────────────────────────────
-// Traditional Ludo Colors — bright & vivid
+// Colors — bright traditional Ludo
 // ─────────────────────────────────────────
 
-const COLOR_PALETTE: Record<
+const C: Record<
   PlayerColor,
-  { primary: string; light: string; dark: string; yard: string; text: string }
+  { bg: string; fg: string; dk: string; yard: string; border: string }
 > = {
-  red:    { primary: "#D32F2F", light: "#EF5350", dark: "#B71C1C", yard: "#FFCDD2", text: "#fff" },
-  green:  { primary: "#388E3C", light: "#66BB6A", dark: "#1B5E20", yard: "#C8E6C9", text: "#fff" },
-  yellow: { primary: "#F9A825", light: "#FFEE58", dark: "#F57F17", yard: "#FFF9C4", text: "#000" },
-  blue:   { primary: "#1565C0", light: "#42A5F5", dark: "#0D47A1", yard: "#BBDEFB", text: "#fff" },
+  red:    { bg: "#D32F2F", fg: "#EF5350", dk: "#B71C1C", yard: "#FFCDD2", border: "#C62828" },
+  green:  { bg: "#388E3C", fg: "#66BB6A", dk: "#1B5E20", yard: "#C8E6C9", border: "#2E7D32" },
+  yellow: { bg: "#F9A825", fg: "#FFEE58", dk: "#F57F17", yard: "#FFF9C4", border: "#F57F17" },
+  blue:   { bg: "#1565C0", fg: "#42A5F5", dk: "#0D47A1", yard: "#BBDEFB", border: "#0D47A1" },
 };
 
-// ─────────────────────────────────────────
-// Audio singleton
-// ─────────────────────────────────────────
+// Yard pixel centers (grid coords) for dice placement
+const YARD_CENTER: Record<PlayerColor, [number, number]> = {
+  red:    [2.8, 2.8],
+  green:  [2.8, 12.2],
+  yellow: [12.2, 12.2],
+  blue:   [12.2, 2.8],
+};
 
 const audio = new LudoAudio();
 
 // ─────────────────────────────────────────
-// Dice Component — white dice with colored dots
+// Pin / pointer token SVG path
 // ─────────────────────────────────────────
 
-const DICE_DOTS: Record<number, Array<[number, number]>> = {
+function pinPath(r: number): string {
+  const t = r * 1.7;
+  return `M 0 ${t} C ${-r * 0.55} ${r * 0.35} ${-r} ${-r * 0.15} ${-r} ${-r * 0.55} A ${r} ${r} 0 1 1 ${r} ${-r * 0.55} C ${r} ${-r * 0.15} ${r * 0.55} ${r * 0.35} 0 ${t} Z`;
+}
+
+// ─────────────────────────────────────────
+// Token — pin shaped with hop animation
+// ─────────────────────────────────────────
+
+interface TokenPieceProps {
+  token: Token;
+  cs: number; // cellSize
+  movable: boolean;
+  selected: boolean;
+  onClick: () => void;
+  overridePos?: [number, number];
+  hopKey?: number; // changes each step to trigger hop
+}
+
+function TokenPiece({ token, cs, movable, selected, onClick, overridePos, hopKey }: TokenPieceProps) {
+  const p = C[token.color];
+  const pos = overridePos ?? getTokenCoord(token, token.color);
+  const x = pos[1] * cs + cs / 2;
+  const y = pos[0] * cs + cs / 2;
+  const r = Math.max(7, cs * 0.3);
+  const hop = cs * 0.8;
+
+  return (
+    <motion.g
+      onClick={movable ? onClick : undefined}
+      style={{ cursor: movable ? "pointer" : "default" }}
+      animate={{ x, y: y - r * 0.3 }}
+      transition={{ type: "tween", duration: 0.18, ease: "easeOut" }}
+      initial={false}
+    >
+      {/* Hop bounce — re-triggers when hopKey changes */}
+      <motion.g
+        key={hopKey ?? "s"}
+        initial={hopKey != null ? { y: 0 } : false}
+        animate={hopKey != null ? { y: [0, -hop, -hop * 0.15, 0] } : { y: 0 }}
+        transition={hopKey != null ? { duration: 0.32, times: [0, 0.38, 0.72, 1], ease: "easeOut" } : { duration: 0 }}
+      >
+        {/* Pulsing ring on movable */}
+        {movable && (
+          <motion.circle
+            cx={0} cy={-r * 0.55} r={r + 4}
+            fill="none" stroke={p.bg} strokeWidth={2.5}
+            animate={{ r: [r + 3, r + 7, r + 3], opacity: [0.9, 0.35, 0.9] }}
+            transition={{ repeat: Infinity, duration: 0.9 }}
+          />
+        )}
+        {/* Shadow */}
+        <ellipse cx={1} cy={r * 1.9} rx={r * 0.55} ry={r * 0.18} fill="rgba(0,0,0,0.2)" />
+        {/* Pin body */}
+        <path d={pinPath(r)} fill={`url(#pg-${token.color})`} stroke={selected ? "#fff" : p.dk} strokeWidth={selected ? 2.5 : 1.2} />
+        {/* White face */}
+        <circle cx={0} cy={-r * 0.55} r={r * 0.5} fill="white" opacity={0.93} />
+        {/* Color dot */}
+        <circle cx={0} cy={-r * 0.55} r={r * 0.26} fill={p.bg} />
+      </motion.g>
+    </motion.g>
+  );
+}
+
+// ─────────────────────────────────────────
+// Dice dots layout
+// ─────────────────────────────────────────
+
+const DOTS: Record<number, Array<[number, number]>> = {
   1: [[50, 50]],
   2: [[30, 30], [70, 70]],
   3: [[30, 30], [50, 50], [70, 70]],
@@ -72,374 +144,120 @@ const DICE_DOTS: Record<number, Array<[number, number]>> = {
   6: [[30, 25], [70, 25], [30, 50], [70, 50], [30, 75], [70, 75]],
 };
 
-interface DiceProps {
-  value: number;
-  rolling: boolean;
-  canRoll: boolean;
-  onRoll: () => void;
-  playerColor: PlayerColor;
-}
-
-function Dice({ value, rolling, canRoll, onRoll, playerColor }: DiceProps) {
-  const pal = COLOR_PALETTE[playerColor];
-  const [displayValue, setDisplayValue] = useState(value || 1);
-
-  useEffect(() => {
-    if (!rolling) {
-      setDisplayValue(value || 1);
-      return;
-    }
-    const iv = setInterval(() => {
-      setDisplayValue(Math.ceil(Math.random() * 6));
-    }, 80);
-    return () => clearInterval(iv);
-  }, [rolling, value]);
-
-  return (
-    <motion.button
-      onClick={canRoll ? onRoll : undefined}
-      disabled={!canRoll || rolling}
-      whileHover={canRoll && !rolling ? { scale: 1.1, y: -3 } : {}}
-      whileTap={canRoll && !rolling ? { scale: 0.92 } : {}}
-      animate={
-        rolling
-          ? { rotateX: [0, 360, 720], rotateY: [0, 180, 360], rotateZ: [0, 90, 0] }
-          : { rotateX: 0, rotateY: 0, rotateZ: 0 }
-      }
-      transition={rolling ? { duration: 0.65, ease: "easeInOut" } : { duration: 0.3 }}
-      style={{
-        width: 68,
-        height: 68,
-        borderRadius: 12,
-        background: "white",
-        border: canRoll ? `3px solid ${pal.primary}` : "3px solid #ccc",
-        boxShadow: canRoll
-          ? `0 4px 20px ${pal.primary}40, 0 2px 8px rgba(0,0,0,0.2)`
-          : "0 2px 8px rgba(0,0,0,0.15)",
-        cursor: canRoll && !rolling ? "pointer" : "default",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        outline: "none",
-        perspective: 600,
-      }}
-    >
-      <svg width="52" height="52" viewBox="0 0 100 100">
-        {(DICE_DOTS[displayValue] || DICE_DOTS[1]).map(([cx, cy], i) => (
-          <circle
-            key={i}
-            cx={cx}
-            cy={cy}
-            r={9}
-            fill={displayValue === 6 && !rolling ? pal.primary : "#333"}
-          />
-        ))}
-      </svg>
-    </motion.button>
-  );
-}
-
 // ─────────────────────────────────────────
-// Pin/Pointer Token SVG shape
-// ─────────────────────────────────────────
-
-/**
- * Generates an SVG path for a map-pin / pointer shape.
- * The pin is centered horizontally; tip points down.
- * @param r - head circle radius
- */
-function pinPath(r: number): string {
-  const tipY = r * 1.7;
-  return [
-    `M 0 ${tipY}`,
-    `C ${-r * 0.55} ${r * 0.35} ${-r} ${-r * 0.15} ${-r} ${-r * 0.55}`,
-    `A ${r} ${r} 0 1 1 ${r} ${-r * 0.55}`,
-    `C ${r} ${-r * 0.15} ${r * 0.55} ${r * 0.35} 0 ${tipY}`,
-    `Z`,
-  ].join(" ");
-}
-
-// ─────────────────────────────────────────
-// Token Component — pointer/pin shaped
-// ─────────────────────────────────────────
-
-interface TokenPieceProps {
-  token: Token;
-  cellSize: number;
-  isMovable: boolean;
-  isSelected: boolean;
-  onClick: () => void;
-  overridePos?: [number, number]; // [row, col] override for animation
-}
-
-function TokenPiece({
-  token,
-  cellSize,
-  isMovable,
-  isSelected,
-  onClick,
-  overridePos,
-}: TokenPieceProps) {
-  const pal = COLOR_PALETTE[token.color];
-  const pos = overridePos ?? getTokenCoord(token, token.color);
-  const [row, col] = pos;
-
-  const x = col * cellSize + cellSize / 2;
-  const y = row * cellSize + cellSize / 2;
-  const r = Math.max(7, cellSize * 0.3);
-
-  return (
-    <motion.g
-      onClick={isMovable ? onClick : undefined}
-      style={{ cursor: isMovable ? "pointer" : "default" }}
-      animate={{ x, y: y - r * 0.4 }}
-      transition={{ type: "spring", stiffness: 400, damping: 30, mass: 0.8 }}
-      initial={false}
-    >
-      {/* Pulsing ring for movable tokens */}
-      {isMovable && (
-        <motion.circle
-          cx={0}
-          cy={-r * 0.55}
-          r={r + 5}
-          fill="none"
-          stroke={pal.primary}
-          strokeWidth={2.5}
-          animate={{ r: [r + 3, r + 8, r + 3], opacity: [0.8, 0.3, 0.8] }}
-          transition={{ repeat: Infinity, duration: 1, ease: "easeInOut" }}
-        />
-      )}
-      {/* Drop shadow */}
-      <ellipse cx={1} cy={r * 1.9} rx={r * 0.6} ry={r * 0.2} fill="rgba(0,0,0,0.25)" />
-      {/* Pin body */}
-      <path
-        d={pinPath(r)}
-        fill={`url(#pin-grad-${token.color})`}
-        stroke={isSelected ? "#fff" : pal.dark}
-        strokeWidth={isSelected ? 2.5 : 1.2}
-      />
-      {/* Inner white circle (face of pin) */}
-      <circle
-        cx={0}
-        cy={-r * 0.55}
-        r={r * 0.52}
-        fill="white"
-        stroke={pal.dark}
-        strokeWidth={0.5}
-        opacity={0.92}
-      />
-      {/* Color dot inside */}
-      <circle cx={0} cy={-r * 0.55} r={r * 0.28} fill={pal.primary} />
-    </motion.g>
-  );
-}
-
-// ─────────────────────────────────────────
-// Board background helpers
-// ─────────────────────────────────────────
-
-function isTrackCell(row: number, col: number): boolean {
-  return MAIN_TRACK_COORDS.some(([r, c]) => r === row && c === col);
-}
-
-function isHomeStretchCell(
-  row: number,
-  col: number
-): PlayerColor | null {
-  for (const color of ["red", "green", "yellow", "blue"] as PlayerColor[]) {
-    if (HOME_STRETCH_COORDS[color].some(([r, c]) => r === row && c === col)) {
-      return color;
-    }
-  }
-  return null;
-}
-
-function getCellQuadrantColor(row: number, col: number): PlayerColor | null {
-  if (row <= 5 && col <= 5) return "red";
-  if (row <= 5 && col >= 9) return "green";
-  if (row >= 9 && col >= 9) return "yellow";
-  if (row >= 9 && col <= 5) return "blue";
-  return null;
-}
-
-// ─────────────────────────────────────────
-// Ludo Board SVG — traditional bright style
+// Board SVG
 // ─────────────────────────────────────────
 
 interface BoardProps {
   state: LudoState;
-  selectedToken: string | null;
-  onTokenClick: (tokenId: string) => void;
-  cellSize: number;
-  animatingToken: string | null;
+  sel: string | null;
+  onTok: (id: string) => void;
+  cs: number;
+  animTok: string | null;
   animPos: [number, number] | null;
+  hopKey: number;
 }
 
-function LudoBoard({
-  state,
-  selectedToken,
-  onTokenClick,
-  cellSize,
-  animatingToken,
-  animPos,
-}: BoardProps) {
-  const size = 15 * cellSize;
-  const movableSet = new Set(state.movablePieces);
+function LudoBoard({ state, sel, onTok, cs, animTok, animPos, hopKey }: BoardProps) {
+  const sz = 15 * cs;
+  const movSet = new Set(state.movablePieces);
 
-  // Track map for stacking
-  const trackTokenMap = useMemo(() => {
-    const map = new Map<number, Token[]>();
-    for (const player of state.players) {
-      for (const token of player.tokens) {
-        if (token.state !== "track" && token.state !== "home") continue;
-        const key = token.trackPos;
-        if (!map.has(key)) map.set(key, []);
-        map.get(key)!.push(token);
+  const stackMap = useMemo(() => {
+    const m = new Map<number, Token[]>();
+    for (const pl of state.players)
+      for (const t of pl.tokens) {
+        if (t.state !== "track" && t.state !== "home") continue;
+        if (!m.has(t.trackPos)) m.set(t.trackPos, []);
+        m.get(t.trackPos)!.push(t);
       }
-    }
-    return map;
+    return m;
   }, [state]);
 
-  // Build set of track cell indices for quick lookup
-  const trackCellSet = useMemo(() => {
-    const s = new Set<string>();
-    MAIN_TRACK_COORDS.forEach(([r, c]) => s.add(`${r},${c}`));
-    for (const color of ["red", "green", "yellow", "blue"] as PlayerColor[]) {
-      HOME_STRETCH_COORDS[color].forEach(([r, c]) => s.add(`${r},${c}`));
-    }
-    return s;
-  }, []);
-
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      style={{ display: "block", borderRadius: 10 }}
-    >
+    <svg width={sz} height={sz} viewBox={`0 0 ${sz} ${sz}`} style={{ display: "block", borderRadius: 8 }}>
       <defs>
-        {/* Pin gradients for each color */}
-        {(["red", "green", "yellow", "blue"] as PlayerColor[]).map((color) => {
-          const pal = COLOR_PALETTE[color];
-          return (
-            <linearGradient
-              key={color}
-              id={`pin-grad-${color}`}
-              x1="0"
-              y1="0"
-              x2="0"
-              y2="1"
-            >
-              <stop offset="0%" stopColor={pal.light} />
-              <stop offset="60%" stopColor={pal.primary} />
-              <stop offset="100%" stopColor={pal.dark} />
-            </linearGradient>
-          );
-        })}
-        <filter id="inner-shadow">
-          <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
-          <feOffset dx="1" dy="1" result="offsetBlur" />
-          <feFlood floodColor="rgba(0,0,0,0.15)" result="color" />
-          <feComposite in2="offsetBlur" operator="in" result="shadow" />
-          <feMerge>
-            <feMergeNode in="shadow" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
+        {(["red", "green", "yellow", "blue"] as PlayerColor[]).map((c) => (
+          <linearGradient key={c} id={`pg-${c}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C[c].fg} />
+            <stop offset="60%" stopColor={C[c].bg} />
+            <stop offset="100%" stopColor={C[c].dk} />
+          </linearGradient>
+        ))}
       </defs>
 
-      {/* Board background — white */}
-      <rect x={0} y={0} width={size} height={size} fill="#f5f0e8" rx={10} />
+      {/* Board bg */}
+      <rect x={0} y={0} width={sz} height={sz} fill="#f5f0e6" rx={8} />
 
-      {/* Quadrant colored backgrounds */}
-      {(
-        [
-          { color: "red" as PlayerColor, x: 0, y: 0 },
-          { color: "green" as PlayerColor, x: 9, y: 0 },
-          { color: "yellow" as PlayerColor, x: 9, y: 9 },
-          { color: "blue" as PlayerColor, x: 0, y: 9 },
-        ] as const
-      ).map(({ color, x, y }) => {
-        const pal = COLOR_PALETTE[color];
+      {/* 4 colored quadrants + white inner yards */}
+      {([
+        { color: "red" as PlayerColor, gx: 0, gy: 0 },
+        { color: "green" as PlayerColor, gx: 9, gy: 0 },
+        { color: "yellow" as PlayerColor, gx: 9, gy: 9 },
+        { color: "blue" as PlayerColor, gx: 0, gy: 9 },
+      ]).map(({ color, gx, gy }) => {
+        const p = C[color];
+        const player = state.players.find((pl) => pl.color === color);
+        const finIdx = state.finishOrder.indexOf(color);
         return (
           <g key={color}>
-            {/* Quadrant fill */}
+            <rect x={gx * cs} y={gy * cs} width={6 * cs} height={6 * cs} fill={p.bg} />
+            {/* White inner yard */}
             <rect
-              x={x * cellSize}
-              y={y * cellSize}
-              width={6 * cellSize}
-              height={6 * cellSize}
-              fill={pal.primary}
+              x={(gx + 0.7) * cs} y={(gy + 0.7) * cs}
+              width={4.6 * cs} height={4.6 * cs}
+              fill="white" rx={cs * 0.45}
+              stroke="rgba(0,0,0,0.06)" strokeWidth={1}
             />
-            {/* Inner white yard area */}
-            <rect
-              x={(x + 0.6) * cellSize}
-              y={(y + 0.6) * cellSize}
-              width={4.8 * cellSize}
-              height={4.8 * cellSize}
-              fill="white"
-              rx={cellSize * 0.5}
-              filter="url(#inner-shadow)"
-            />
-            {/* 4 token slots in yard */}
+            {/* 4 token slots */}
             {YARD_COORDS[color].map(([yr, yc], i) => (
-              <circle
-                key={i}
-                cx={yc * cellSize + cellSize / 2}
-                cy={yr * cellSize + cellSize / 2}
-                r={cellSize * 0.38}
-                fill={pal.yard}
-                stroke={pal.primary}
-                strokeWidth={1.5}
-              />
+              <circle key={i} cx={yc * cs + cs / 2} cy={yr * cs + cs / 2} r={cs * 0.36}
+                fill={p.yard} stroke={p.bg} strokeWidth={1.5} />
             ))}
+            {/* Player name */}
+            {player && (
+              <text
+                x={(gx + 3) * cs}
+                y={gy === 0 ? (gy + 5.7) * cs : (gy + 0.45) * cs}
+                textAnchor="middle"
+                fontSize={cs * 0.38}
+                fontWeight={700}
+                fill="white"
+                style={{ pointerEvents: "none", textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}
+              >
+                {player.name}{player.type === "ai" ? ` (${player.aiLevel})` : ""}
+              </text>
+            )}
+            {/* Finish badge */}
+            {finIdx >= 0 && (
+              <text
+                x={(gx + 3) * cs}
+                y={(gy + 3) * cs + cs * 0.15}
+                textAnchor="middle"
+                fontSize={cs * 1.2}
+                style={{ pointerEvents: "none" }}
+              >
+                {["🏆", "🥈", "🥉", "4️⃣"][finIdx]}
+              </text>
+            )}
           </g>
         );
       })}
 
-      {/* Track cells — white cells with borders */}
-      {MAIN_TRACK_COORDS.map(([r, c], idx) => {
-        // Color the track cell if it's an entry cell or safe/star cell
-        const isEntry = Object.entries(ENTRY_CELLS).find(([, eIdx]) => eIdx === idx);
-        const isSafe = SAFE_CELLS.has(idx);
+      {/* Track cells */}
+      {MAIN_TRACK_COORDS.map(([r, c2], idx) => {
+        const entry = Object.entries(ENTRY_CELLS).find(([, eIdx]) => eIdx === idx);
+        const safe = SAFE_CELLS.has(idx);
         let fill = "white";
-        if (isEntry) {
-          fill = COLOR_PALETTE[isEntry[0] as PlayerColor].yard;
-        }
-
+        if (entry) fill = C[entry[0] as PlayerColor].yard;
         return (
-          <g key={`track-${idx}`}>
-            <rect
-              x={c * cellSize + 0.5}
-              y={r * cellSize + 0.5}
-              width={cellSize - 1}
-              height={cellSize - 1}
-              fill={fill}
-              stroke="#bbb"
-              strokeWidth={0.8}
-            />
-            {/* Star on safe cells */}
-            {isSafe && (
-              <text
-                x={c * cellSize + cellSize / 2}
-                y={r * cellSize + cellSize / 2 + cellSize * 0.18}
-                textAnchor="middle"
-                fontSize={cellSize * 0.48}
-                fill={isEntry ? COLOR_PALETTE[isEntry[0] as PlayerColor].dark : "#ccc"}
-                style={{ pointerEvents: "none" }}
-              >
-                ★
-              </text>
-            )}
-            {/* Arrow on entry cells */}
-            {isEntry && !isSafe && (
-              <circle
-                cx={c * cellSize + cellSize / 2}
-                cy={r * cellSize + cellSize / 2}
-                r={cellSize * 0.15}
-                fill={COLOR_PALETTE[isEntry[0] as PlayerColor].primary}
-                opacity={0.5}
-              />
+          <g key={`t${idx}`}>
+            <rect x={c2 * cs + 0.5} y={r * cs + 0.5} width={cs - 1} height={cs - 1}
+              fill={fill} stroke="#c0c0c0" strokeWidth={0.6} />
+            {safe && (
+              <text x={c2 * cs + cs / 2} y={r * cs + cs / 2 + cs * 0.17}
+                textAnchor="middle" fontSize={cs * 0.45}
+                fill={entry ? C[entry[0] as PlayerColor].dk : "#d0d0d0"}
+                style={{ pointerEvents: "none" }}>★</text>
             )}
           </g>
         );
@@ -447,251 +265,78 @@ function LudoBoard({
 
       {/* Home stretch colored cells */}
       {(["red", "green", "yellow", "blue"] as PlayerColor[]).map((color) =>
-        HOME_STRETCH_COORDS[color].slice(0, 5).map(([r, c], i) => {
-          const pal = COLOR_PALETTE[color];
-          return (
-            <rect
-              key={`hs-${color}-${i}`}
-              x={c * cellSize + 0.5}
-              y={r * cellSize + 0.5}
-              width={cellSize - 1}
-              height={cellSize - 1}
-              fill={pal.primary}
-              stroke={pal.dark}
-              strokeWidth={0.5}
-              opacity={0.85}
-            />
-          );
-        })
+        HOME_STRETCH_COORDS[color].slice(0, 5).map(([r, c2], i) => (
+          <rect key={`h${color}${i}`} x={c2 * cs + 0.5} y={r * cs + 0.5}
+            width={cs - 1} height={cs - 1} fill={C[color].bg} stroke={C[color].dk}
+            strokeWidth={0.4} opacity={0.85} />
+        ))
       )}
 
-      {/* Center home — 4 colored triangles */}
+      {/* Center home triangles */}
       {(() => {
-        const cx = 7 * cellSize + cellSize / 2;
-        const cy = 7 * cellSize + cellSize / 2;
-        const half = cellSize * 1.5;
-        const colors: PlayerColor[] = ["red", "green", "yellow", "blue"];
-        // Triangle points: top, right, bottom, left of center square
-        const corners: Array<[number, number]> = [
-          [cx, cy - half],
-          [cx + half, cy],
-          [cx, cy + half],
-          [cx - half, cy],
-        ];
-        return colors.map((color, i) => {
-          const c1 = corners[i];
-          const c2 = corners[(i + 1) % 4];
-          return (
-            <polygon
-              key={color}
-              points={`${cx},${cy} ${c1[0]},${c1[1]} ${c2[0]},${c2[1]}`}
-              fill={COLOR_PALETTE[color].primary}
-              stroke="white"
-              strokeWidth={1.5}
-            />
-          );
-        });
+        const cx = 7 * cs + cs / 2, cy = 7 * cs + cs / 2, h = cs * 1.5;
+        const corners: Array<[number, number]> = [[cx, cy - h], [cx + h, cy], [cx, cy + h], [cx - h, cy]];
+        return (["red", "green", "yellow", "blue"] as PlayerColor[]).map((color, i) => (
+          <polygon key={color}
+            points={`${cx},${cy} ${corners[i][0]},${corners[i][1]} ${corners[(i + 1) % 4][0]},${corners[(i + 1) % 4][1]}`}
+            fill={C[color].bg} stroke="white" strokeWidth={1.5} />
+        ));
       })()}
 
-      {/* Center circle */}
-      <circle
-        cx={7 * cellSize + cellSize / 2}
-        cy={7 * cellSize + cellSize / 2}
-        r={cellSize * 0.4}
-        fill="white"
-        stroke="#ddd"
-        strokeWidth={1}
-      />
+      {/* Active player yard glow */}
+      {(() => {
+        const cp = state.players[state.currentPlayerIndex];
+        const yardPos: Record<PlayerColor, [number, number]> = {
+          red: [0, 0], green: [9, 0], yellow: [9, 9], blue: [0, 9],
+        };
+        const [gx, gy] = yardPos[cp.color];
+        return (
+          <rect x={gx * cs} y={gy * cs} width={6 * cs} height={6 * cs}
+            fill="none" stroke="white" strokeWidth={3}
+            strokeDasharray={`${cs * 0.8} ${cs * 0.4}`}
+            opacity={0.7} rx={2}
+          />
+        );
+      })()}
 
-      {/* All tokens — yard, track, home stretch */}
+      {/* Tokens */}
       {state.players.flatMap((player) =>
         player.tokens.map((token) => {
           if (token.state === "finished") {
-            // Finished tokens show small in center
-            const angle =
-              (token.index * 90 +
-                { red: -45, green: 45, yellow: 135, blue: 225 }[token.color]) *
-              (Math.PI / 180);
-            const cx2 = 7 * cellSize + cellSize / 2;
-            const cy2 = 7 * cellSize + cellSize / 2;
-            const fr = cellSize * 0.6;
-            const fx = cx2 + fr * Math.cos(angle);
-            const fy = cy2 + fr * Math.sin(angle);
+            const ang = (token.index * 90 + { red: -45, green: 45, yellow: 135, blue: 225 }[token.color]) * (Math.PI / 180);
+            const cx2 = 7 * cs + cs / 2, cy2 = 7 * cs + cs / 2;
             return (
-              <motion.circle
-                key={token.id}
-                cx={fx}
-                cy={fy}
-                r={cellSize * 0.2}
-                fill={COLOR_PALETTE[token.color].primary}
-                stroke="white"
-                strokeWidth={1.5}
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 300 }}
-              />
+              <motion.circle key={token.id}
+                cx={cx2 + cs * 0.55 * Math.cos(ang)} cy={cy2 + cs * 0.55 * Math.sin(ang)}
+                r={cs * 0.2} fill={C[token.color].bg} stroke="white" strokeWidth={1.5}
+                initial={{ scale: 0 }} animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 300 }} />
             );
           }
 
-          // Stacking offset for tokens sharing a cell
-          let stackOffset: [number, number] | undefined;
-          if (token.state === "track" || token.state === "home") {
-            const tokensHere = trackTokenMap.get(token.trackPos) ?? [];
-            if (tokensHere.length > 1) {
-              const idx = tokensHere.findIndex((t) => t.id === token.id);
-              const offsets: Array<[number, number]> = [
-                [-0.3, -0.3],
-                [0.3, -0.3],
-                [-0.3, 0.3],
-                [0.3, 0.3],
-              ];
-              stackOffset = offsets[idx % 4];
+          let oPos: [number, number] | undefined;
+          if (animTok === token.id && animPos) {
+            oPos = animPos;
+          } else if ((token.state === "track" || token.state === "home") && !oPos) {
+            const here = stackMap.get(token.trackPos) ?? [];
+            if (here.length > 1) {
+              const si = here.findIndex((t) => t.id === token.id);
+              const off: Array<[number, number]> = [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]];
+              const base = getTokenCoord(token, token.color);
+              oPos = [base[0] + off[si % 4][0], base[1] + off[si % 4][1]];
             }
           }
 
-          const isAnimating = animatingToken === token.id;
-          let overridePos: [number, number] | undefined;
-          if (isAnimating && animPos) {
-            overridePos = animPos;
-          }
-          if (stackOffset && !overridePos) {
-            // Apply stack offset via a slightly different position
-            const base = getTokenCoord(token, token.color);
-            overridePos = [
-              base[0] + stackOffset[0],
-              base[1] + stackOffset[1],
-            ];
-          }
-
           return (
-            <TokenPiece
-              key={token.id}
-              token={token}
-              cellSize={cellSize}
-              isMovable={movableSet.has(token.id)}
-              isSelected={selectedToken === token.id}
-              onClick={() => onTokenClick(token.id)}
-              overridePos={overridePos}
-            />
+            <TokenPiece key={token.id} token={token} cs={cs}
+              movable={movSet.has(token.id)} selected={sel === token.id}
+              onClick={() => onTok(token.id)}
+              overridePos={oPos}
+              hopKey={animTok === token.id ? hopKey : undefined} />
           );
         })
       )}
     </svg>
-  );
-}
-
-// ─────────────────────────────────────────
-// Player Panel
-// ─────────────────────────────────────────
-
-interface PlayerPanelProps {
-  player: Player;
-  isCurrentTurn: boolean;
-  finishPosition?: number;
-}
-
-function PlayerPanel({ player, isCurrentTurn, finishPosition }: PlayerPanelProps) {
-  const pal = COLOR_PALETTE[player.color];
-
-  return (
-    <motion.div
-      animate={{
-        boxShadow: isCurrentTurn
-          ? `0 0 0 2px ${pal.primary}, 0 0 16px ${pal.primary}50`
-          : "0 0 0 1px #e0e0e0",
-      }}
-      transition={{ duration: 0.3 }}
-      style={{
-        borderRadius: 12,
-        padding: "10px 14px",
-        background: isCurrentTurn ? pal.yard : "#fafafa",
-        border: `2px solid ${isCurrentTurn ? pal.primary : "#e0e0e0"}`,
-        opacity: player.hasFinished ? 0.6 : 1,
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div
-          style={{
-            width: 16,
-            height: 16,
-            borderRadius: "50%",
-            background: pal.primary,
-            flexShrink: 0,
-            border: `2px solid ${pal.dark}`,
-          }}
-        />
-        <span style={{ color: "#333", fontWeight: 700, fontSize: 13 }}>
-          {player.name}
-          {player.type === "ai" && (
-            <span
-              style={{
-                color: "#888",
-                fontWeight: 400,
-                fontSize: 10,
-                marginLeft: 4,
-              }}
-            >
-              ({player.aiLevel})
-            </span>
-          )}
-        </span>
-        {finishPosition !== undefined && (
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: 13,
-              fontWeight: 700,
-              color: finishPosition === 1 ? "#F9A825" : "#888",
-            }}
-          >
-            {finishPosition === 1 ? "🏆" : `#${finishPosition}`}
-          </span>
-        )}
-      </div>
-
-      {/* Token status dots */}
-      <div style={{ display: "flex", gap: 5, marginTop: 6 }}>
-        {player.tokens.map((t) => (
-          <div
-            key={t.id}
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background:
-                t.state === "finished"
-                  ? pal.primary
-                  : t.state === "yard"
-                  ? "#ddd"
-                  : pal.light,
-              border: `1.5px solid ${
-                t.state === "finished" ? pal.dark : t.state === "yard" ? "#bbb" : pal.primary
-              }`,
-            }}
-          />
-        ))}
-      </div>
-
-      {isCurrentTurn && (
-        <motion.div
-          style={{
-            position: "absolute",
-            top: 4,
-            right: 8,
-            fontSize: 9,
-            color: pal.dark,
-            fontWeight: 700,
-            letterSpacing: 1,
-          }}
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ repeat: Infinity, duration: 0.9 }}
-        >
-          TURN
-        </motion.div>
-      )}
-    </motion.div>
   );
 }
 
@@ -704,417 +349,115 @@ interface MenuConfig {
   playerTypes: Array<{ type: PlayerType; aiLevel?: AILevel }>;
 }
 
-function MenuScreen({
-  stats,
-  onStart,
-}: {
-  stats: LudoStats;
-  onStart: (config: MenuConfig) => void;
-}) {
-  const [numPlayers, setNumPlayers] = useState<2 | 3 | 4>(2);
-  const [playerTypes, setPlayerTypes] = useState<
-    Array<{ type: PlayerType; aiLevel?: AILevel }>
-  >([
+function MenuScreen({ stats, onStart }: { stats: LudoStats; onStart: (c: MenuConfig) => void }) {
+  const [num, setNum] = useState<2 | 3 | 4>(4);
+  const [pt, setPt] = useState<Array<{ type: PlayerType; aiLevel?: AILevel }>>([
     { type: "human" },
     { type: "ai", aiLevel: "medium" },
     { type: "ai", aiLevel: "medium" },
     { type: "ai", aiLevel: "medium" },
   ]);
+  const colors = PLAYER_COLORS_BY_COUNT[num];
 
-  const colors = PLAYER_COLORS_BY_COUNT[numPlayers];
-
-  const togglePlayerType = (i: number) => {
-    setPlayerTypes((prev) => {
-      const next = [...prev];
-      if (next[i].type === "human") {
-        next[i] = { type: "ai", aiLevel: "easy" };
-      } else if (next[i].aiLevel === "easy") {
-        next[i] = { type: "ai", aiLevel: "medium" };
-      } else if (next[i].aiLevel === "medium") {
-        next[i] = { type: "ai", aiLevel: "hard" };
-      } else {
-        next[i] = { type: "human" };
-      }
-      return next;
+  const toggle = (i: number) => {
+    setPt((prev) => {
+      const n = [...prev];
+      if (n[i].type === "human") n[i] = { type: "ai", aiLevel: "easy" };
+      else if (n[i].aiLevel === "easy") n[i] = { type: "ai", aiLevel: "medium" };
+      else if (n[i].aiLevel === "medium") n[i] = { type: "ai", aiLevel: "hard" };
+      else n[i] = { type: "human" };
+      return n;
     });
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(160deg, #fffde7 0%, #fff3e0 50%, #e3f2fd 100%)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px 16px",
-      }}
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+    <div style={{
+      minHeight: "100vh",
+      background: "linear-gradient(160deg,#fffde7 0%,#fff3e0 50%,#e3f2fd 100%)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: "16px",
+    }}>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
         style={{
-          width: "100%",
-          maxWidth: 460,
-          background: "white",
-          border: "1px solid #e0e0e0",
-          borderRadius: 24,
-          padding: "36px 32px",
-          boxShadow: "0 8px 40px rgba(0,0,0,0.1)",
-        }}
-      >
-        {/* Title */}
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <h1
-            style={{
-              fontSize: 48,
-              fontWeight: 900,
-              letterSpacing: -1,
-              background:
-                "linear-gradient(135deg, #D32F2F, #F9A825, #388E3C, #1565C0)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              marginBottom: 8,
-            }}
-          >
-            LUDO
-          </h1>
-          <p style={{ color: "#888", fontSize: 14 }}>
-            Race your tokens home — roll, capture, win
-          </p>
+          width: "100%", maxWidth: 440, background: "white",
+          border: "1px solid #e0e0e0", borderRadius: 24,
+          padding: "32px 28px", boxShadow: "0 8px 40px rgba(0,0,0,0.1)",
+        }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <h1 style={{
+            fontSize: 48, fontWeight: 900, letterSpacing: -1,
+            background: "linear-gradient(135deg,#D32F2F,#F9A825,#388E3C,#1565C0)",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 6,
+          }}>LUDO</h1>
+          <p style={{ color: "#888", fontSize: 13 }}>Roll, race, capture — be the first home!</p>
         </div>
 
-        {/* Stats */}
         {stats.gamesPlayed > 0 && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              gap: 8,
-              marginBottom: 28,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 24 }}>
             {[
-              { label: "Wins", value: stats.wins, color: "#388E3C" },
-              { label: "Losses", value: stats.losses, color: "#D32F2F" },
-              { label: "Streak", value: stats.winStreak, color: "#F9A825" },
-            ].map(({ label, value, color }) => (
-              <div
-                key={label}
-                style={{
-                  background: "#fafafa",
-                  borderRadius: 10,
-                  padding: "8px 4px",
-                  textAlign: "center",
-                  border: "1px solid #eee",
-                }}
-              >
-                <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
-                <div style={{ fontSize: 10, color: "#999", letterSpacing: 0.5 }}>
-                  {label}
-                </div>
+              { l: "Wins", v: stats.wins, c: "#388E3C" },
+              { l: "Played", v: stats.gamesPlayed, c: "#1565C0" },
+              { l: "Streak", v: stats.winStreak, c: "#F9A825" },
+            ].map(({ l, v, c }) => (
+              <div key={l} style={{ background: "#fafafa", borderRadius: 10, padding: "8px 4px", textAlign: "center", border: "1px solid #eee" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: c }}>{v}</div>
+                <div style={{ fontSize: 10, color: "#999" }}>{l}</div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Number of players */}
-        <div style={{ marginBottom: 24 }}>
-          <p
-            style={{
-              color: "#666",
-              fontSize: 12,
-              marginBottom: 10,
-              letterSpacing: 1,
-              fontWeight: 700,
-            }}
-          >
-            PLAYERS
-          </p>
-          <div style={{ display: "flex", gap: 8 }}>
-            {([2, 3, 4] as const).map((n) => (
-              <motion.button
-                key={n}
-                onClick={() => setNumPlayers(n)}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.96 }}
-                style={{
-                  flex: 1,
-                  padding: "10px 0",
-                  borderRadius: 10,
-                  border:
-                    numPlayers === n
-                      ? "2px solid #1565C0"
-                      : "2px solid #e0e0e0",
-                  background: numPlayers === n ? "#e3f2fd" : "white",
-                  color: numPlayers === n ? "#1565C0" : "#666",
-                  fontSize: 18,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {n}
-              </motion.button>
-            ))}
-          </div>
-        </div>
-
-        {/* Player configuration */}
-        <div style={{ marginBottom: 28 }}>
-          <p
-            style={{
-              color: "#666",
-              fontSize: 12,
-              marginBottom: 10,
-              letterSpacing: 1,
-              fontWeight: 700,
-            }}
-          >
-            SETUP
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {colors.map((color, i) => {
-              const pal = COLOR_PALETTE[color];
-              const cfg = playerTypes[i];
-              const label =
-                cfg.type === "human" ? "Human" : `AI · ${cfg.aiLevel}`;
-              return (
-                <motion.button
-                  key={color}
-                  onClick={() => togglePlayerType(i)}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: `2px solid ${pal.primary}30`,
-                    background: pal.yard,
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: "50%",
-                      background: pal.primary,
-                      flexShrink: 0,
-                      border: `2px solid ${pal.dark}`,
-                    }}
-                  />
-                  <span
-                    style={{ color: "#333", fontWeight: 600, fontSize: 14, flex: 1 }}
-                  >
-                    {color.charAt(0).toUpperCase() + color.slice(1)}
-                  </span>
-                  <span
-                    style={{
-                      color: cfg.type === "human" ? "#1565C0" : "#388E3C",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      background:
-                        cfg.type === "human"
-                          ? "rgba(21,101,192,0.1)"
-                          : "rgba(56,142,60,0.1)",
-                      padding: "4px 10px",
-                      borderRadius: 6,
-                    }}
-                  >
-                    {label}
-                  </span>
-                </motion.button>
-              );
-            })}
-          </div>
-          <p style={{ color: "#aaa", fontSize: 11, marginTop: 8 }}>
-            Click to cycle: Human → AI Easy → Medium → Hard → Human
-          </p>
-        </div>
-
-        {/* Start button */}
-        <motion.button
-          onClick={() => {
-            audio.click();
-            onStart({
-              numPlayers,
-              playerTypes: playerTypes.slice(0, numPlayers),
-            });
-          }}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          style={{
-            width: "100%",
-            padding: "14px 0",
-            background:
-              "linear-gradient(135deg, #D32F2F, #F9A825, #388E3C, #1565C0)",
-            border: "none",
-            borderRadius: 12,
-            color: "white",
-            fontSize: 18,
-            fontWeight: 800,
-            cursor: "pointer",
-            letterSpacing: 2,
-            boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-          }}
-        >
-          PLAY
-        </motion.button>
-      </motion.div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────
-// Game Over Screen
-// ─────────────────────────────────────────
-
-function GameOverScreen({
-  state,
-  stats,
-  onPlayAgain,
-  onMenu,
-}: {
-  state: LudoState;
-  stats: LudoStats;
-  onPlayAgain: () => void;
-  onMenu: () => void;
-}) {
-  const winner = state.finishOrder[0];
-  const pal = winner ? COLOR_PALETTE[winner] : COLOR_PALETTE.red;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 100,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backdropFilter: "blur(8px)",
-      }}
-    >
-      <motion.div
-        initial={{ scale: 0.7, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 260, damping: 22 }}
-        style={{
-          width: "90%",
-          maxWidth: 380,
-          background: "white",
-          border: `3px solid ${pal.primary}`,
-          borderRadius: 24,
-          padding: "36px 28px",
-          textAlign: "center",
-          boxShadow: `0 8px 60px rgba(0,0,0,0.2)`,
-        }}
-      >
-        <motion.div
-          style={{ fontSize: 56, marginBottom: 8 }}
-          animate={{ rotate: [0, 10, -10, 0] }}
-          transition={{ repeat: Infinity, duration: 2 }}
-        >
-          🏆
-        </motion.div>
-        <h2
-          style={{
-            fontSize: 28,
-            fontWeight: 900,
-            color: pal.primary,
-            marginBottom: 4,
-          }}
-        >
-          {winner
-            ? `${winner.charAt(0).toUpperCase() + winner.slice(1)} Wins!`
-            : "Game Over"}
-        </h2>
-        <p style={{ color: "#888", fontSize: 14, marginBottom: 24 }}>
-          {state.players.find((p) => p.color === winner)?.type === "human"
-            ? "Congratulations!"
-            : "The AI won this round."}
-        </p>
-
-        {/* Finish order */}
-        <div style={{ marginBottom: 24 }}>
-          {state.finishOrder.map((color, i) => (
-            <div
-              key={color}
+        <p style={{ color: "#666", fontSize: 11, letterSpacing: 1, fontWeight: 700, marginBottom: 8 }}>PLAYERS</p>
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          {([2, 3, 4] as const).map((n) => (
+            <motion.button key={n} onClick={() => setNum(n)} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "6px 12px",
-                borderRadius: 8,
-                marginBottom: 4,
-                background: i === 0 ? "#FFF9C4" : "#fafafa",
-              }}
-            >
-              <span style={{ fontSize: 16 }}>
-                {["🥇", "🥈", "🥉", "4️⃣"][i]}
-              </span>
-              <div
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: "50%",
-                  background: COLOR_PALETTE[color].primary,
-                }}
-              />
-              <span style={{ color: "#333", fontWeight: 600, fontSize: 13 }}>
-                {color.charAt(0).toUpperCase() + color.slice(1)}
-              </span>
-            </div>
+                flex: 1, padding: "10px 0", borderRadius: 10,
+                border: num === n ? "2px solid #1565C0" : "2px solid #e0e0e0",
+                background: num === n ? "#e3f2fd" : "white",
+                color: num === n ? "#1565C0" : "#666", fontSize: 18, fontWeight: 700, cursor: "pointer",
+              }}>{n}</motion.button>
           ))}
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <motion.button
-            onClick={onMenu}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            style={{
-              flex: 1,
-              padding: "12px 0",
-              borderRadius: 10,
-              border: "2px solid #e0e0e0",
-              background: "white",
-              color: "#666",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Menu
-          </motion.button>
-          <motion.button
-            onClick={onPlayAgain}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            style={{
-              flex: 1,
-              padding: "12px 0",
-              borderRadius: 10,
-              border: `2px solid ${pal.primary}`,
-              background: pal.primary,
-              color: "white",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            Play Again
-          </motion.button>
+        <p style={{ color: "#666", fontSize: 11, letterSpacing: 1, fontWeight: 700, marginBottom: 8 }}>SETUP</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
+          {colors.map((color, i) => {
+            const p = C[color]; const cfg = pt[i];
+            const label = cfg.type === "human" ? "Human" : `AI · ${cfg.aiLevel}`;
+            return (
+              <motion.button key={color} onClick={() => toggle(i)} whileTap={{ scale: 0.98 }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "9px 12px", borderRadius: 10,
+                  border: `2px solid ${p.bg}30`, background: p.yard,
+                  cursor: "pointer", textAlign: "left",
+                }}>
+                <div style={{ width: 18, height: 18, borderRadius: "50%", background: p.bg, border: `2px solid ${p.dk}`, flexShrink: 0 }} />
+                <span style={{ color: "#333", fontWeight: 600, fontSize: 13, flex: 1 }}>
+                  {color.charAt(0).toUpperCase() + color.slice(1)}
+                </span>
+                <span style={{
+                  color: cfg.type === "human" ? "#1565C0" : "#388E3C",
+                  fontSize: 11, fontWeight: 600,
+                  background: cfg.type === "human" ? "rgba(21,101,192,0.1)" : "rgba(56,142,60,0.1)",
+                  padding: "3px 10px", borderRadius: 6,
+                }}>{label}</span>
+              </motion.button>
+            );
+          })}
         </div>
+
+        <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+          onClick={() => { audio.click(); onStart({ numPlayers: num, playerTypes: pt.slice(0, num) }); }}
+          style={{
+            width: "100%", padding: "14px 0",
+            background: "linear-gradient(135deg,#D32F2F,#F9A825,#388E3C,#1565C0)",
+            border: "none", borderRadius: 12, color: "white", fontSize: 18,
+            fontWeight: 800, cursor: "pointer", letterSpacing: 2,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+          }}>PLAY</motion.button>
       </motion.div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -1122,586 +465,435 @@ function GameOverScreen({
 // Main Game Component
 // ─────────────────────────────────────────
 
-type GameScreen = "menu" | "game";
-
 export function LudoGame() {
-  const [screen, setScreen] = useState<GameScreen>("menu");
-  const [gameState, setGameState] = useState<LudoState | null>(null);
-  const [menuConfig, setMenuConfig] = useState<MenuConfig | null>(null);
-  const [selectedToken, setSelectedToken] = useState<string | null>(null);
-  const [diceRolling, setDiceRolling] = useState(false);
+  const [screen, setScreen] = useState<"menu" | "game">("menu");
+  const [gs, setGs] = useState<LudoState | null>(null);
+  const [menuCfg, setMenuCfg] = useState<MenuConfig | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
+  const [rolling, setRolling] = useState(false);
   const [stats, setStats] = useState<LudoStats>(() => {
-    if (typeof window === "undefined")
-      return {
-        wins: 0,
-        losses: 0,
-        captures: 0,
-        gamesPlayed: 0,
-        winStreak: 0,
-        bestStreak: 0,
-      };
+    if (typeof window === "undefined") return { wins: 0, losses: 0, captures: 0, gamesPlayed: 0, winStreak: 0, bestStreak: 0 };
     return loadStats();
   });
-  const [captureFlash, setCaptureFlash] = useState<string | null>(null);
-  const [showGameOver, setShowGameOver] = useState(false);
+  const [toast, setToast] = useState("");
   const [gameCaptures, setGameCaptures] = useState(0);
-  const [statusMessage, setStatusMessage] = useState("");
 
-  // Step-by-step animation state
-  const [animatingToken, setAnimatingToken] = useState<string | null>(null);
+  // Animation
+  const [animTok, setAnimTok] = useState<string | null>(null);
   const [animPos, setAnimPos] = useState<[number, number] | null>(null);
-  const animLockRef = useRef(false);
+  const [hopKey, setHopKey] = useState(0);
+  const animLock = useRef(false);
+  const gsRef = useRef<LudoState | null>(null);
+  const processing = useRef(false);
 
-  const stateRef = useRef<LudoState | null>(null);
-  const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined
-  );
-  const isProcessingRef = useRef(false);
+  // Dice display value during roll
+  const [diceDisplay, setDiceDisplay] = useState(1);
 
+  useEffect(() => { gsRef.current = gs; }, [gs]);
+
+  // Responsive: fill screen
+  const [cs, setCs] = useState(36);
   useEffect(() => {
-    stateRef.current = gameState;
-  }, [gameState]);
-
-  // Responsive cell size
-  const [cellSize, setCellSize] = useState(36);
-  useEffect(() => {
-    function handleResize() {
-      const vw = Math.min(window.innerWidth * 0.95, 600);
-      const vh = window.innerHeight * 0.6;
-      const maxBoard = Math.min(vw, vh);
-      setCellSize(Math.max(22, Math.floor(maxBoard / 15)));
-    }
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    const calc = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      // Board + thin top bar (36px) + dice label below (if needed)
+      const avail = Math.min(w - 8, h - 44);
+      setCs(Math.max(20, Math.floor(avail / 15)));
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
   }, []);
 
-  const showStatus = useCallback((msg: string, duration = 2000) => {
-    setStatusMessage(msg);
-    setTimeout(() => setStatusMessage(""), duration);
+  const boardSz = 15 * cs;
+
+  const flash = useCallback((msg: string, dur = 1800) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), dur);
   }, []);
 
-  /**
-   * Animate a token along waypoints step-by-step, then apply the final state.
-   */
+  // ── Step-by-step animate then apply ───
   const animateAndApply = useCallback(
-    (
-      tokenId: string,
-      result: MoveResult,
-      callback?: () => void
-    ) => {
+    (tokenId: string, result: MoveResult, cb?: () => void) => {
       const path = result.movePath;
-
       if (path.length === 0) {
-        // No movement path (shouldn't happen but safety)
-        setGameState(result.newState);
-        if (callback) callback();
+        // No path (e.g. entering from yard with 0-length path shouldn't happen, but safety)
+        applyFinal(result, cb);
         return;
       }
 
-      animLockRef.current = true;
-      setAnimatingToken(tokenId);
-
+      animLock.current = true;
+      setAnimTok(tokenId);
       let step = 0;
-      const stepDelay = Math.max(80, 160 - path.length * 10); // faster for longer moves
+      const delay = 280; // ms per hop — slow, visible hop
 
       const doStep = () => {
         if (step >= path.length) {
-          // Animation done — apply the real state
-          setAnimatingToken(null);
+          setAnimTok(null);
           setAnimPos(null);
-          animLockRef.current = false;
-
-          // Sound effects for the final result
-          if (result.enteredBoard) {
-            audio.tokenEnter();
-            showStatus("Token entered the board!");
-          } else if (result.finished) {
-            audio.tokenFinish();
-            showStatus("Token finished! 🎉");
-          } else if (result.enteredHome) {
-            audio.homeStretch();
-            showStatus("Home stretch!");
-          }
-
-          if (result.captured && result.capturedToken) {
-            audio.capture();
-            setCaptureFlash(result.capturedToken.color);
-            setGameCaptures((c) => c + 1);
-            showStatus(
-              `${result.capturedToken!.color.toUpperCase()} captured!`,
-              2500
-            );
-            setTimeout(() => setCaptureFlash(null), 800);
-          }
-
-          setGameState(result.newState);
-
-          if (result.newState.phase === "gameover") {
-            audio.victory();
-            const humanPlayer = result.newState.players.find(
-              (p) => p.type === "human"
-            );
-            const humanWon = humanPlayer
-              ? result.newState.finishOrder[0] === humanPlayer.color
-              : false;
-            const updatedStats = updateStats(
-              stats,
-              humanWon,
-              gameCaptures + (result.captured ? 1 : 0)
-            );
-            setStats(updatedStats);
-            saveStats(updatedStats);
-            setTimeout(() => setShowGameOver(true), 1200);
-          }
-
-          if (callback) callback();
+          animLock.current = false;
+          applyFinal(result, cb);
           return;
         }
-
         setAnimPos(path[step]);
-        audio.tokenStep();
+        setHopKey((k) => k + 1);
+        if (step > 0 || path.length === 1) audio.tokenStep();
         step++;
-        setTimeout(doStep, stepDelay);
+        setTimeout(doStep, delay);
       };
 
+      // First step immediately
       doStep();
     },
-    [stats, gameCaptures, showStatus]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stats, gameCaptures]
   );
 
-  // AI turn logic
-  const runAITurn = useCallback(() => {
-    const state = stateRef.current;
-    if (!state) return;
-    if (isProcessingRef.current) return;
-    isProcessingRef.current = true;
+  function applyFinal(result: MoveResult, cb?: () => void) {
+    if (result.enteredBoard) { audio.tokenEnter(); flash("Token entered!"); }
+    else if (result.finished) { audio.tokenFinish(); flash("Token home! 🎉"); }
+    else if (result.enteredHome) { audio.homeStretch(); flash("Home stretch!"); }
 
-    const player = getCurrentPlayer(state);
-    if (player.type !== "ai") {
-      isProcessingRef.current = false;
-      return;
+    if (result.captured && result.capturedToken) {
+      audio.capture();
+      setGameCaptures((c) => c + 1);
+      flash(`${result.capturedToken.color.toUpperCase()} captured!`, 2200);
     }
 
-    aiTimeoutRef.current = setTimeout(() => {
-      const currentState = stateRef.current;
-      if (!currentState) {
-        isProcessingRef.current = false;
-        return;
-      }
+    setGs(result.newState);
 
-      setDiceRolling(true);
+    // Check game end
+    if (result.newState.phase === "gameover") {
+      audio.victory();
+      const hp = result.newState.players.find((p) => p.type === "human");
+      const won = hp ? result.newState.finishOrder[0] === hp.color : false;
+      const ns = updateStats(stats, won, gameCaptures + (result.captured ? 1 : 0));
+      setStats(ns);
+      saveStats(ns);
+    }
+
+    cb?.();
+  }
+
+  // ── AI turn ───
+  const runAI = useCallback(() => {
+    const st = gsRef.current;
+    if (!st) return;
+    if (processing.current) return;
+    processing.current = true;
+
+    setTimeout(() => {
+      const cur = gsRef.current;
+      if (!cur) { processing.current = false; return; }
+
+      setRolling(true);
       audio.diceShake();
+      // Animate dice display during roll
+      const rollIv = setInterval(() => setDiceDisplay(Math.ceil(Math.random() * 6)), 80);
 
       setTimeout(() => {
-        setDiceRolling(false);
-        const diceValue = rollDice();
+        clearInterval(rollIv);
+        setRolling(false);
+        const dv = rollDice();
+        setDiceDisplay(dv);
+        if (dv === 6) audio.sixRolled(); else audio.diceLand(dv);
 
-        if (diceValue === 6) audio.sixRolled();
-        else audio.diceLand(diceValue);
-
-        setGameState((prev) => {
+        setGs((prev) => {
           if (!prev) return prev;
-          const next = deepCloneState(prev);
-          next.dice = diceValue;
-          next.diceRolled = true;
-          next.consecutiveSixes =
-            diceValue === 6 ? next.consecutiveSixes + 1 : 0;
-          const movable = getMovableTokens(next);
-          next.movablePieces = movable;
-          return next;
+          const n = deepCloneState(prev);
+          n.dice = dv; n.diceRolled = true;
+          n.consecutiveSixes = dv === 6 ? n.consecutiveSixes + 1 : 0;
+          n.movablePieces = getMovableTokens(n);
+          return n;
         });
 
         setTimeout(() => {
-          const updatedState = stateRef.current;
-          if (!updatedState) {
-            isProcessingRef.current = false;
+          const us = gsRef.current;
+          if (!us) { processing.current = false; return; }
+          if (us.movablePieces.length === 0 || (us.dice === 6 && us.consecutiveSixes >= 3)) {
+            setGs(handleNoMoves(us));
+            processing.current = false;
             return;
           }
-
-          const movable = updatedState.movablePieces;
-          if (movable.length === 0) {
-            const newState = handleNoMoves(updatedState);
-            setGameState(newState);
-            isProcessingRef.current = false;
-            return;
-          }
-
-          if (
-            updatedState.dice === 6 &&
-            updatedState.consecutiveSixes >= 3
-          ) {
-            const newState = handleNoMoves(updatedState);
-            setGameState(newState);
-            isProcessingRef.current = false;
-            return;
-          }
-
-          const tokenId = getAIMove(updatedState);
-          if (!tokenId) {
-            isProcessingRef.current = false;
-            return;
-          }
-
-          const result = applyMove(updatedState, tokenId);
-          animateAndApply(tokenId, result, () => {
-            isProcessingRef.current = false;
-          });
-        }, 500);
-      }, 700);
-    }, 600);
+          const tid = getAIMove(us);
+          if (!tid) { processing.current = false; return; }
+          const res = applyMove(us, tid);
+          animateAndApply(tid, res, () => { processing.current = false; });
+        }, 450);
+      }, 650);
+    }, 500);
   }, [animateAndApply]);
 
-  // Watch for AI turn
   useEffect(() => {
-    if (!gameState || gameState.phase !== "playing") return;
-    if (diceRolling || animLockRef.current) return;
-    const currentPlayer = getCurrentPlayer(gameState);
-    if (currentPlayer.type !== "ai") return;
-    if (gameState.diceRolled) return;
+    if (!gs || gs.phase !== "playing" || rolling || animLock.current) return;
+    const cp = getCurrentPlayer(gs);
+    if (cp.type !== "ai" || gs.diceRolled) return;
+    const t = setTimeout(runAI, 250);
+    return () => clearTimeout(t);
+  }, [gs, rolling, runAI]);
 
-    const timeout = setTimeout(() => {
-      runAITurn();
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [gameState, diceRolling, runAITurn]);
-
-  const handleStart = useCallback((config: MenuConfig) => {
-    const state = createInitialState(config.numPlayers, config.playerTypes);
-    setMenuConfig(config);
-    setGameState(state);
+  // ── Handlers ───
+  const handleStart = useCallback((cfg: MenuConfig) => {
+    const s = createInitialState(cfg.numPlayers, cfg.playerTypes);
+    setMenuCfg(cfg);
+    setGs(s);
     setScreen("game");
-    setSelectedToken(null);
-    setShowGameOver(false);
+    setSel(null);
     setGameCaptures(0);
-    isProcessingRef.current = false;
-    animLockRef.current = false;
-    setAnimatingToken(null);
+    processing.current = false;
+    animLock.current = false;
+    setAnimTok(null);
     setAnimPos(null);
+    setDiceDisplay(1);
   }, []);
 
-  const handlePlayAgain = useCallback(() => {
-    if (!menuConfig) return;
-    setShowGameOver(false);
-    handleStart(menuConfig);
-  }, [menuConfig, handleStart]);
+  const handleRoll = useCallback(() => {
+    if (!gs || gs.diceRolled || rolling || animLock.current || processing.current) return;
+    if (getCurrentPlayer(gs).type !== "human") return;
 
-  const handleRollDice = useCallback(() => {
-    if (!gameState) return;
-    if (gameState.diceRolled) return;
-    if (diceRolling || animLockRef.current) return;
-    if (isProcessingRef.current) return;
-
-    const currentPlayer = getCurrentPlayer(gameState);
-    if (currentPlayer.type !== "human") return;
-
-    setDiceRolling(true);
+    setRolling(true);
     audio.diceShake();
+    const rollIv = setInterval(() => setDiceDisplay(Math.ceil(Math.random() * 6)), 80);
 
     setTimeout(() => {
-      setDiceRolling(false);
-      const diceValue = rollDice();
-      if (diceValue === 6) audio.sixRolled();
-      else audio.diceLand(diceValue);
+      clearInterval(rollIv);
+      setRolling(false);
+      const dv = rollDice();
+      setDiceDisplay(dv);
+      if (dv === 6) audio.sixRolled(); else audio.diceLand(dv);
 
-      setGameState((prev) => {
+      setGs((prev) => {
         if (!prev) return prev;
-        const next = deepCloneState(prev);
-        next.dice = diceValue;
-        next.diceRolled = true;
-        next.consecutiveSixes =
-          diceValue === 6 ? next.consecutiveSixes + 1 : 0;
-        const movable = getMovableTokens(next);
-        next.movablePieces = movable;
-        return next;
+        const n = deepCloneState(prev);
+        n.dice = dv; n.diceRolled = true;
+        n.consecutiveSixes = dv === 6 ? n.consecutiveSixes + 1 : 0;
+        n.movablePieces = getMovableTokens(n);
+        return n;
       });
-    }, 700);
-  }, [gameState, diceRolling]);
+    }, 650);
+  }, [gs, rolling]);
 
-  // Auto-advance when no moves available after dice roll (human)
+  // Auto-skip when human has no moves
   useEffect(() => {
-    if (!gameState) return;
-    if (!gameState.diceRolled) return;
-    if (gameState.movablePieces.length > 0) return;
-    if (diceRolling || animLockRef.current) return;
+    if (!gs || !gs.diceRolled || gs.movablePieces.length > 0 || rolling || animLock.current) return;
+    if (getCurrentPlayer(gs).type !== "human") return;
+    const t = setTimeout(() => {
+      flash("No moves — skipping", 1200);
+      setGs((p) => p ? handleNoMoves(p) : p);
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [gs, rolling, flash]);
 
-    const currentPlayer = getCurrentPlayer(gameState);
-    if (currentPlayer.type !== "human") return;
+  const handleTok = useCallback((tid: string) => {
+    if (!gs || !gs.diceRolled || !gs.movablePieces.includes(tid)) return;
+    if (processing.current || animLock.current) return;
+    if (getCurrentPlayer(gs).type !== "human") return;
+    audio.click();
+    setSel(tid);
+    const st = gsRef.current;
+    if (!st) return;
+    const res = applyMove(st, tid);
+    setSel(null);
+    animateAndApply(tid, res);
+  }, [gs, animateAndApply]);
 
-    const timeout = setTimeout(() => {
-      showStatus("No moves available — skipping turn", 1500);
-      setGameState((prev) => (prev ? handleNoMoves(prev) : prev));
-    }, 1200);
-    return () => clearTimeout(timeout);
-  }, [gameState, diceRolling, showStatus]);
+  // ── Render ───
+  if (screen === "menu") return <MenuScreen stats={stats} onStart={handleStart} />;
+  if (!gs) return null;
 
-  const handleTokenClick = useCallback(
-    (tokenId: string) => {
-      if (!gameState) return;
-      if (!gameState.diceRolled) return;
-      if (!gameState.movablePieces.includes(tokenId)) return;
-      if (isProcessingRef.current || animLockRef.current) return;
+  const cp = getCurrentPlayer(gs);
+  const pal = C[cp.color];
+  const isGameOver = gs.phase === "gameover";
 
-      const currentPlayer = getCurrentPlayer(gameState);
-      if (currentPlayer.type !== "human") return;
+  // Dice position — in current player's yard
+  const [dRow, dCol] = YARD_CENTER[cp.color];
+  const diceLeft = dCol * cs;
+  const diceTop = dRow * cs;
 
-      audio.click();
-      setSelectedToken(tokenId);
-
-      const state = stateRef.current;
-      if (!state) return;
-      const result = applyMove(state, tokenId);
-
-      setSelectedToken(null);
-      animateAndApply(tokenId, result);
-    },
-    [gameState, animateAndApply]
-  );
-
-  if (screen === "menu") {
-    return <MenuScreen stats={stats} onStart={handleStart} />;
-  }
-
-  if (!gameState) return null;
-
-  const currentPlayer = getCurrentPlayer(gameState);
-  const pal = COLOR_PALETTE[currentPlayer.color];
-  const boardSize = 15 * cellSize;
+  // Can roll?
+  const canRoll = !gs.diceRolled && !rolling && !animLock.current && cp.type === "human" && !isGameOver;
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background:
-          "linear-gradient(160deg, #fffde7 0%, #fff3e0 50%, #e3f2fd 100%)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        padding: "12px 8px",
-        gap: 10,
-      }}
-    >
-      {/* Capture flash */}
+    <div style={{
+      minHeight: "100vh", width: "100%",
+      background: "linear-gradient(160deg,#fffde7 0%,#fff3e0 50%,#e3f2fd 100%)",
+      display: "flex", flexDirection: "column", alignItems: "center",
+      justifyContent: "center", position: "relative", overflow: "hidden",
+    }}>
+      {/* Fixed toast — no layout shift */}
       <AnimatePresence>
-        {captureFlash && (
+        {toast && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.3 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0, y: -30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
             style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 50,
-              pointerEvents: "none",
-              background:
-                COLOR_PALETTE[captureFlash as PlayerColor].primary,
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Header */}
-      <div
-        style={{
-          width: "100%",
-          maxWidth: boardSize + 40,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
-        <motion.button
-          onClick={() => setScreen("menu")}
-          whileHover={{ scale: 1.06 }}
-          whileTap={{ scale: 0.94 }}
-          style={{
-            padding: "6px 14px",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            background: "white",
-            color: "#666",
-            fontSize: 12,
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
-        >
-          ← Menu
-        </motion.button>
-        <h1
-          style={{
-            fontWeight: 900,
-            fontSize: 22,
-            letterSpacing: 3,
-            background:
-              "linear-gradient(135deg, #D32F2F, #F9A825, #388E3C, #1565C0)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}
-        >
-          LUDO
-        </h1>
-        <div style={{ width: 70 }} />
-      </div>
-
-      {/* Status message */}
-      <AnimatePresence>
-        {statusMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            style={{
-              padding: "6px 18px",
-              borderRadius: 20,
-              background: "white",
-              border: "1px solid #e0e0e0",
-              color: "#333",
-              fontSize: 12,
-              fontWeight: 600,
-              boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-            }}
-          >
-            {statusMessage}
+              position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 200,
+              padding: "7px 22px", borderRadius: 20,
+              background: "white", border: "1px solid #e0e0e0",
+              color: "#333", fontSize: 13, fontWeight: 600,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.1)", pointerEvents: "none",
+            }}>
+            {toast}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Main layout */}
-      <div
+      {/* Back button — top left */}
+      <motion.button
+        onClick={() => setScreen("menu")}
+        whileTap={{ scale: 0.92 }}
         style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 10,
-          width: "100%",
-          maxWidth: boardSize + 260,
-        }}
-      >
-        {/* Player panels */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${gameState.numPlayers}, 1fr)`,
-            gap: 8,
-            width: "100%",
-            maxWidth: boardSize + 40,
-          }}
-        >
-          {gameState.players.map((player, i) => (
-            <PlayerPanel
-              key={player.color}
-              player={player}
-              isCurrentTurn={i === gameState.currentPlayerIndex}
-              finishPosition={
-                gameState.finishOrder.indexOf(player.color) >= 0
-                  ? gameState.finishOrder.indexOf(player.color) + 1
-                  : undefined
+          position: "fixed", top: 8, left: 8, zIndex: 100,
+          padding: "5px 14px", borderRadius: 8,
+          border: "1px solid #ddd", background: "white",
+          color: "#555", fontSize: 12, cursor: "pointer", fontWeight: 600,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+        }}>← Menu</motion.button>
+
+      {/* Board container — centered, full size */}
+      <div style={{ position: "relative", borderRadius: 10, overflow: "visible" }}>
+        <div style={{
+          borderRadius: 10, overflow: "hidden",
+          boxShadow: "0 6px 30px rgba(0,0,0,0.12), 0 0 0 2px rgba(0,0,0,0.05)",
+        }}>
+          <LudoBoard state={gs} sel={sel} onTok={handleTok} cs={cs}
+            animTok={animTok} animPos={animPos} hopKey={hopKey} />
+        </div>
+
+        {/* Dice overlay — positioned in current player's yard */}
+        {!isGameOver && (
+          <motion.div
+            animate={{ left: diceLeft, top: diceTop }}
+            transition={{ type: "spring", stiffness: 200, damping: 22, mass: 0.8 }}
+            style={{
+              position: "absolute",
+              transform: "translate(-50%, -50%)",
+              zIndex: 10,
+            }}
+          >
+            <motion.button
+              onClick={canRoll ? handleRoll : undefined}
+              disabled={!canRoll}
+              whileHover={canRoll ? { scale: 1.12 } : {}}
+              whileTap={canRoll ? { scale: 0.88 } : {}}
+              animate={
+                rolling
+                  ? { rotateX: [0, 360, 720], rotateY: [0, 180, 360], rotateZ: [0, 120, 0] }
+                  : { rotateX: 0, rotateY: 0, rotateZ: 0 }
               }
-            />
-          ))}
-        </div>
-
-        {/* Board */}
-        <div
-          style={{
-            position: "relative",
-            borderRadius: 14,
-            overflow: "hidden",
-            boxShadow:
-              "0 4px 24px rgba(0,0,0,0.12), 0 0 0 2px rgba(0,0,0,0.06)",
-            border: "2px solid #d0d0d0",
-          }}
-        >
-          <LudoBoard
-            state={gameState}
-            selectedToken={selectedToken}
-            onTokenClick={handleTokenClick}
-            cellSize={cellSize}
-            animatingToken={animatingToken}
-            animPos={animPos}
-          />
-        </div>
-
-        {/* Dice + controls */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            padding: "12px 20px",
-            borderRadius: 16,
-            background: "white",
-            border: "1px solid #e0e0e0",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
-          }}
-        >
-          <Dice
-            value={gameState.dice}
-            rolling={diceRolling}
-            canRoll={
-              !gameState.diceRolled &&
-              !diceRolling &&
-              !animLockRef.current &&
-              currentPlayer.type === "human" &&
-              gameState.phase === "playing"
-            }
-            onRoll={handleRollDice}
-            playerColor={currentPlayer.color}
-          />
-          <div>
-            <div
+              transition={rolling ? { duration: 0.6, ease: "easeInOut" } : { duration: 0.3 }}
               style={{
-                color: pal.primary,
-                fontWeight: 700,
-                fontSize: 14,
+                width: Math.max(48, cs * 1.6),
+                height: Math.max(48, cs * 1.6),
+                borderRadius: Math.max(8, cs * 0.3),
+                background: gs.diceRolled ? "white" : pal.bg,
+                border: `3px solid ${pal.bg}`,
+                boxShadow: canRoll
+                  ? `0 4px 24px ${pal.bg}55, 0 2px 8px rgba(0,0,0,0.2)`
+                  : "0 2px 8px rgba(0,0,0,0.15)",
+                cursor: canRoll ? "pointer" : "default",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                outline: "none", perspective: 600,
+                opacity: gs.diceRolled && !rolling ? 0.85 : 1,
+                pointerEvents: gs.diceRolled && !rolling ? "none" : "auto",
               }}
             >
-              {currentPlayer.name}&apos;s Turn
-              {currentPlayer.type === "ai" && " (AI)"}
-            </div>
-            <div
-              style={{ color: "#999", fontSize: 11, marginTop: 2 }}
-            >
-              {!gameState.diceRolled
-                ? currentPlayer.type === "human"
-                  ? "Tap dice to roll"
-                  : "AI is thinking..."
-                : gameState.movablePieces.length > 0
-                ? currentPlayer.type === "human"
-                  ? "Tap a token to move"
-                  : "AI is choosing..."
-                : "No moves available"}
-            </div>
-            {gameState.dice === 6 && gameState.diceRolled && (
+              <svg width="80%" height="80%" viewBox="0 0 100 100">
+                {(DOTS[diceDisplay] || DOTS[1]).map(([cx, cy], i) => (
+                  <circle key={i} cx={cx} cy={cy} r={10}
+                    fill={gs.diceRolled ? "#333" : "white"} />
+                ))}
+              </svg>
+            </motion.button>
+
+            {/* Turn label under dice */}
+            {!rolling && !gs.diceRolled && cp.type === "human" && (
               <motion.div
-                style={{
-                  color: "#F9A825",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  marginTop: 2,
-                }}
                 animate={{ opacity: [1, 0.4, 1] }}
-                transition={{ repeat: Infinity, duration: 0.8 }}
-              >
-                ✨ Rolled 6 — bonus turn!
+                transition={{ repeat: Infinity, duration: 1.2 }}
+                style={{
+                  textAlign: "center", marginTop: 4,
+                  fontSize: Math.max(9, cs * 0.28), fontWeight: 700,
+                  color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.4)",
+                  pointerEvents: "none",
+                }}>
+                TAP
               </motion.div>
             )}
-          </div>
-        </div>
+
+            {/* Rolled 6 indicator */}
+            {gs.dice === 6 && gs.diceRolled && !rolling && (
+              <motion.div
+                animate={{ opacity: [1, 0.3, 1], scale: [1, 1.1, 1] }}
+                transition={{ repeat: Infinity, duration: 0.7 }}
+                style={{
+                  textAlign: "center", marginTop: 2,
+                  fontSize: Math.max(9, cs * 0.26), fontWeight: 800,
+                  color: "#F9A825", textShadow: "0 1px 3px rgba(0,0,0,0.4)",
+                  pointerEvents: "none",
+                }}>
+                ✨ 6!
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Game-over inline results — replaces dice area */}
+        {isGameOver && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            style={{
+              position: "absolute", bottom: -8, left: "50%", transform: "translateX(-50%)",
+              background: "white", borderRadius: 16,
+              padding: "16px 24px", textAlign: "center",
+              boxShadow: "0 6px 30px rgba(0,0,0,0.15)",
+              border: "2px solid #e0e0e0", zIndex: 20,
+              minWidth: Math.min(boardSz * 0.7, 320),
+            }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#333", marginBottom: 10 }}>
+              🏆 {gs.finishOrder[0]?.charAt(0).toUpperCase()}{gs.finishOrder[0]?.slice(1)} Wins!
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: 14 }}>
+              {gs.finishOrder.map((clr, i) => (
+                <div key={clr} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 14 }}>{["🥇", "🥈", "🥉", "4️⃣"][i]}</span>
+                  <div style={{ width: 12, height: 12, borderRadius: "50%", background: C[clr].bg }} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setScreen("menu")}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 8,
+                  border: "2px solid #e0e0e0", background: "white",
+                  color: "#666", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                }}>Menu</button>
+              <button onClick={() => menuCfg && handleStart(menuCfg)}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 8,
+                  border: "none", background: C[gs.finishOrder[0]].bg,
+                  color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                }}>Again</button>
+            </div>
+          </motion.div>
+        )}
       </div>
 
-      {/* Game over overlay */}
-      <AnimatePresence>
-        {showGameOver && (
-          <GameOverScreen
-            state={gameState}
-            stats={stats}
-            onPlayAgain={handlePlayAgain}
-            onMenu={() => setScreen("menu")}
-          />
-        )}
-      </AnimatePresence>
+      {/* Turn status — fixed bottom */}
+      {!isGameOver && (
+        <div style={{
+          position: "fixed", bottom: 8, left: "50%", transform: "translateX(-50%)",
+          background: "white", borderRadius: 20,
+          padding: "6px 20px", fontSize: 12, fontWeight: 600,
+          color: pal.bg, boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+          border: `2px solid ${pal.bg}30`, zIndex: 50, whiteSpace: "nowrap",
+        }}>
+          {cp.name}&apos;s Turn
+          {cp.type === "ai" && " (AI)"}
+          {!gs.diceRolled && cp.type === "human" ? " — Tap dice" : ""}
+          {gs.diceRolled && gs.movablePieces.length > 0 && cp.type === "human" ? " — Tap a token" : ""}
+        </div>
+      )}
     </div>
   );
 }
@@ -1714,42 +906,28 @@ export function LudoMiniPreview() {
   return (
     <svg viewBox="0 0 100 100" width="100%" height="100%">
       <rect x={0} y={0} width={100} height={100} fill="#f5f0e8" rx={4} />
-
-      {/* Yard quadrants */}
       <rect x={2} y={2} width={38} height={38} fill="#D32F2F" rx={4} />
       <rect x={60} y={2} width={38} height={38} fill="#388E3C" rx={4} />
       <rect x={60} y={60} width={38} height={38} fill="#F9A825" rx={4} />
       <rect x={2} y={60} width={38} height={38} fill="#1565C0" rx={4} />
-
-      {/* Inner white yards */}
       <rect x={6} y={6} width={30} height={30} fill="white" rx={4} />
       <rect x={64} y={6} width={30} height={30} fill="white" rx={4} />
       <rect x={64} y={64} width={30} height={30} fill="white" rx={4} />
       <rect x={6} y={64} width={30} height={30} fill="white" rx={4} />
-
-      {/* Cross track */}
       <rect x={42} y={2} width={16} height={96} fill="white" stroke="#ddd" strokeWidth={0.5} />
       <rect x={2} y={42} width={96} height={16} fill="white" stroke="#ddd" strokeWidth={0.5} />
-
-      {/* Center triangles */}
       <polygon points="50,50 42,42 58,42" fill="#D32F2F" />
       <polygon points="50,50 58,42 58,58" fill="#388E3C" />
       <polygon points="50,50 58,58 42,58" fill="#F9A825" />
       <polygon points="50,50 42,58 42,42" fill="#1565C0" />
-
-      {/* Tokens in yard */}
       <circle cx={14} cy={14} r={5} fill="#D32F2F" stroke="#B71C1C" strokeWidth={1} />
       <circle cx={28} cy={14} r={5} fill="#D32F2F" stroke="#B71C1C" strokeWidth={1} opacity={0.6} />
       <circle cx={78} cy={14} r={5} fill="#388E3C" stroke="#1B5E20" strokeWidth={1} />
       <circle cx={78} cy={78} r={5} fill="#F9A825" stroke="#F57F17" strokeWidth={1} />
       <circle cx={14} cy={78} r={5} fill="#1565C0" stroke="#0D47A1" strokeWidth={1} />
-
-      {/* Pin token on track */}
       <path d="M 50 22 C 47 18 45 14 45 12 A 5 5 0 1 1 55 12 C 55 14 53 18 50 22 Z"
         fill="#D32F2F" stroke="white" strokeWidth={0.8} />
       <circle cx={50} cy={12} r={2} fill="white" />
-
-      {/* Star */}
       <text x={50} y={72} textAnchor="middle" fontSize={8} fill="#F9A825">★</text>
     </svg>
   );
