@@ -53,12 +53,12 @@ const C: Record<
   blue:   { bg: "#1565C0", fg: "#42A5F5", dk: "#0D47A1", yard: "#BBDEFB", border: "#0D47A1" },
 };
 
-// Yard pixel centers (grid coords) for dice placement
+// Yard pixel centers (grid coords) for dice placement — true center of each white inner yard
 const YARD_CENTER: Record<PlayerColor, [number, number]> = {
-  red:    [2.8, 2.8],
-  green:  [2.8, 12.2],
-  yellow: [12.2, 12.2],
-  blue:   [12.2, 2.8],
+  red:    [3, 3],
+  green:  [3, 12],
+  yellow: [12, 12],
+  blue:   [12, 3],
 };
 
 const audio = new LudoAudio();
@@ -760,81 +760,91 @@ export function LudoGame() {
             animTok={animTok} animPos={animPos} hopKey={hopKey} />
         </div>
 
-        {/* Dice overlay — positioned in current player's yard */}
+        {/* Dice overlay — positioned in current player's yard center */}
         {!isGameOver && (
           <motion.div
-            animate={{ left: diceLeft, top: diceTop }}
+            initial={{ x: diceLeft, y: diceTop }}
+            animate={{ x: diceLeft, y: diceTop }}
             transition={{ type: "spring", stiffness: 200, damping: 22, mass: 0.8 }}
             style={{
               position: "absolute",
-              transform: "translate(-50%, -50%)",
+              top: 0,
+              left: 0,
               zIndex: 10,
+              pointerEvents: "none",
             }}
           >
-            <motion.button
-              onClick={canRoll ? handleRoll : undefined}
-              disabled={!canRoll}
-              whileHover={canRoll ? { scale: 1.12 } : {}}
-              whileTap={canRoll ? { scale: 0.88 } : {}}
-              animate={
-                rolling
-                  ? { rotateX: [0, 360, 720], rotateY: [0, 180, 360], rotateZ: [0, 120, 0] }
-                  : { rotateX: 0, rotateY: 0, rotateZ: 0 }
-              }
-              transition={rolling ? { duration: 0.6, ease: "easeInOut" } : { duration: 0.3 }}
-              style={{
-                width: Math.max(48, cs * 1.6),
-                height: Math.max(48, cs * 1.6),
-                borderRadius: Math.max(8, cs * 0.3),
-                background: gs.diceRolled ? "white" : pal.bg,
-                border: `3px solid ${pal.bg}`,
-                boxShadow: canRoll
-                  ? `0 4px 24px ${pal.bg}55, 0 2px 8px rgba(0,0,0,0.2)`
-                  : "0 2px 8px rgba(0,0,0,0.15)",
-                cursor: canRoll ? "pointer" : "default",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                outline: "none", perspective: 600,
-                opacity: gs.diceRolled && !rolling ? 0.85 : 1,
-                pointerEvents: gs.diceRolled && !rolling ? "none" : "auto",
-              }}
-            >
-              <svg width="80%" height="80%" viewBox="0 0 100 100">
-                {(DOTS[diceDisplay] || DOTS[1]).map(([cx, cy], i) => (
-                  <circle key={i} cx={cx} cy={cy} r={10}
-                    fill={gs.diceRolled ? "#333" : "white"} />
-                ))}
-              </svg>
-            </motion.button>
-
-            {/* Turn label under dice */}
-            {!rolling && !gs.diceRolled && cp.type === "human" && (
-              <motion.div
-                animate={{ opacity: [1, 0.4, 1] }}
-                transition={{ repeat: Infinity, duration: 1.2 }}
+            {/* Inner wrapper centers content at the animated point */}
+            <div style={{
+              transform: "translate(-50%, -50%)",
+              display: "flex", flexDirection: "column", alignItems: "center",
+              pointerEvents: "auto",
+            }}>
+              <motion.button
+                onClick={canRoll ? handleRoll : undefined}
+                disabled={!canRoll}
+                whileHover={canRoll ? { scale: 1.12 } : {}}
+                whileTap={canRoll ? { scale: 0.88 } : {}}
+                animate={
+                  rolling
+                    ? { rotateX: [0, 360, 720], rotateY: [0, 180, 360], rotateZ: [0, 120, 0] }
+                    : { rotateX: 0, rotateY: 0, rotateZ: 0 }
+                }
+                transition={rolling ? { duration: 0.6, ease: "easeInOut" } : { duration: 0.3 }}
                 style={{
-                  textAlign: "center", marginTop: 4,
-                  fontSize: Math.max(9, cs * 0.28), fontWeight: 700,
-                  color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.4)",
-                  pointerEvents: "none",
-                }}>
-                TAP
-              </motion.div>
-            )}
+                  width: Math.max(48, cs * 1.6),
+                  height: Math.max(48, cs * 1.6),
+                  borderRadius: Math.max(8, cs * 0.3),
+                  background: gs.diceRolled ? "white" : pal.bg,
+                  border: `3px solid ${pal.bg}`,
+                  boxShadow: canRoll
+                    ? `0 4px 24px ${pal.bg}55, 0 2px 8px rgba(0,0,0,0.2)`
+                    : "0 2px 8px rgba(0,0,0,0.15)",
+                  cursor: canRoll ? "pointer" : "default",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  outline: "none", perspective: 600,
+                  opacity: gs.diceRolled && !rolling ? 0.85 : 1,
+                  pointerEvents: gs.diceRolled && !rolling ? "none" : "auto",
+                }}
+              >
+                <svg width="80%" height="80%" viewBox="0 0 100 100">
+                  {(DOTS[diceDisplay] || DOTS[1]).map(([cx, cy], i) => (
+                    <circle key={i} cx={cx} cy={cy} r={10}
+                      fill={gs.diceRolled ? "#333" : "white"} />
+                  ))}
+                </svg>
+              </motion.button>
 
-            {/* Rolled 6 indicator */}
-            {gs.dice === 6 && gs.diceRolled && !rolling && (
-              <motion.div
-                animate={{ opacity: [1, 0.3, 1], scale: [1, 1.1, 1] }}
-                transition={{ repeat: Infinity, duration: 0.7 }}
-                style={{
-                  textAlign: "center", marginTop: 2,
-                  fontSize: Math.max(9, cs * 0.26), fontWeight: 800,
-                  color: "#F9A825", textShadow: "0 1px 3px rgba(0,0,0,0.4)",
-                  pointerEvents: "none",
-                }}>
-                ✨ 6!
-              </motion.div>
-            )}
+              {/* Turn label under dice */}
+              {!rolling && !gs.diceRolled && cp.type === "human" && (
+                <motion.div
+                  animate={{ opacity: [1, 0.4, 1] }}
+                  transition={{ repeat: Infinity, duration: 1.2 }}
+                  style={{
+                    textAlign: "center", marginTop: 4,
+                    fontSize: Math.max(9, cs * 0.28), fontWeight: 700,
+                    color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.4)",
+                    pointerEvents: "none",
+                  }}>
+                  TAP
+                </motion.div>
+              )}
+
+              {/* Rolled 6 indicator */}
+              {gs.dice === 6 && gs.diceRolled && !rolling && (
+                <motion.div
+                  animate={{ opacity: [1, 0.3, 1], scale: [1, 1.1, 1] }}
+                  transition={{ repeat: Infinity, duration: 0.7 }}
+                  style={{
+                    textAlign: "center", marginTop: 2,
+                    fontSize: Math.max(9, cs * 0.26), fontWeight: 800,
+                    color: "#F9A825", textShadow: "0 1px 3px rgba(0,0,0,0.4)",
+                    pointerEvents: "none",
+                  }}>
+                  ✨ 6!
+                </motion.div>
+              )}
+            </div>
           </motion.div>
         )}
 
