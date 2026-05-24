@@ -24,6 +24,7 @@ import {
   handleNoMoves,
   getAIMove,
   getTokenCoord,
+  getMovePath,
   MAIN_TRACK_COORDS,
   HOME_STRETCH_COORDS,
   YARD_COORDS,
@@ -39,25 +40,18 @@ import {
 import { LudoAudio } from "@/lib/ludo/audio";
 
 // ─────────────────────────────────────────
-// Constants & Colors
+// Traditional Ludo Colors — bright & vivid
 // ─────────────────────────────────────────
 
-const COLOR_PALETTE: Record<PlayerColor, {
-  primary: string;
-  light: string;
-  dark: string;
-  glow: string;
-  text: string;
-  yard: string;
-}> = {
-  red:    { primary: "#ef4444", light: "#fca5a5", dark: "#991b1b", glow: "#ef444455", text: "#fff", yard: "rgba(239,68,68,0.18)" },
-  green:  { primary: "#22c55e", light: "#86efac", dark: "#15803d", glow: "#22c55e55", text: "#fff", yard: "rgba(34,197,94,0.18)" },
-  yellow: { primary: "#eab308", light: "#fde68a", dark: "#a16207", glow: "#eab30855", text: "#000", yard: "rgba(234,179,8,0.18)" },
-  blue:   { primary: "#3b82f6", light: "#93c5fd", dark: "#1d4ed8", glow: "#3b82f655", text: "#fff", yard: "rgba(59,130,246,0.18)" },
+const COLOR_PALETTE: Record<
+  PlayerColor,
+  { primary: string; light: string; dark: string; yard: string; text: string }
+> = {
+  red:    { primary: "#D32F2F", light: "#EF5350", dark: "#B71C1C", yard: "#FFCDD2", text: "#fff" },
+  green:  { primary: "#388E3C", light: "#66BB6A", dark: "#1B5E20", yard: "#C8E6C9", text: "#fff" },
+  yellow: { primary: "#F9A825", light: "#FFEE58", dark: "#F57F17", yard: "#FFF9C4", text: "#000" },
+  blue:   { primary: "#1565C0", light: "#42A5F5", dark: "#0D47A1", yard: "#BBDEFB", text: "#fff" },
 };
-
-// Safe star cells
-const STAR_CELLS = [8, 13, 21, 26, 34, 39, 47];
 
 // ─────────────────────────────────────────
 // Audio singleton
@@ -66,16 +60,16 @@ const STAR_CELLS = [8, 13, 21, 26, 34, 39, 47];
 const audio = new LudoAudio();
 
 // ─────────────────────────────────────────
-// Dice Component
+// Dice Component — white dice with colored dots
 // ─────────────────────────────────────────
 
 const DICE_DOTS: Record<number, Array<[number, number]>> = {
   1: [[50, 50]],
-  2: [[25, 25], [75, 75]],
-  3: [[25, 25], [50, 50], [75, 75]],
-  4: [[25, 25], [75, 25], [25, 75], [75, 75]],
-  5: [[25, 25], [75, 25], [50, 50], [25, 75], [75, 75]],
-  6: [[25, 22], [75, 22], [25, 50], [75, 50], [25, 78], [75, 78]],
+  2: [[30, 30], [70, 70]],
+  3: [[30, 30], [50, 50], [70, 70]],
+  4: [[30, 30], [70, 30], [30, 70], [70, 70]],
+  5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]],
+  6: [[30, 25], [70, 25], [30, 50], [70, 50], [30, 75], [70, 75]],
 };
 
 interface DiceProps {
@@ -88,36 +82,57 @@ interface DiceProps {
 
 function Dice({ value, rolling, canRoll, onRoll, playerColor }: DiceProps) {
   const pal = COLOR_PALETTE[playerColor];
-  const displayValue = rolling ? Math.ceil(Math.random() * 6) : value;
+  const [displayValue, setDisplayValue] = useState(value || 1);
+
+  useEffect(() => {
+    if (!rolling) {
+      setDisplayValue(value || 1);
+      return;
+    }
+    const iv = setInterval(() => {
+      setDisplayValue(Math.ceil(Math.random() * 6));
+    }, 80);
+    return () => clearInterval(iv);
+  }, [rolling, value]);
 
   return (
     <motion.button
       onClick={canRoll ? onRoll : undefined}
       disabled={!canRoll || rolling}
-      whileHover={canRoll && !rolling ? { scale: 1.08, y: -2 } : {}}
-      whileTap={canRoll && !rolling ? { scale: 0.94 } : {}}
+      whileHover={canRoll && !rolling ? { scale: 1.1, y: -3 } : {}}
+      whileTap={canRoll && !rolling ? { scale: 0.92 } : {}}
+      animate={
+        rolling
+          ? { rotateX: [0, 360, 720], rotateY: [0, 180, 360], rotateZ: [0, 90, 0] }
+          : { rotateX: 0, rotateY: 0, rotateZ: 0 }
+      }
+      transition={rolling ? { duration: 0.65, ease: "easeInOut" } : { duration: 0.3 }}
       style={{
-        width: 72,
-        height: 72,
-        borderRadius: 14,
-        background: canRoll
-          ? `linear-gradient(135deg, ${pal.primary}, ${pal.dark})`
-          : "rgba(40,40,60,0.7)",
-        border: `2px solid ${canRoll ? pal.primary : "rgba(255,255,255,0.1)"}`,
-        boxShadow: canRoll ? `0 0 24px ${pal.glow}, 0 4px 16px rgba(0,0,0,0.5)` : "0 4px 16px rgba(0,0,0,0.4)",
+        width: 68,
+        height: 68,
+        borderRadius: 12,
+        background: "white",
+        border: canRoll ? `3px solid ${pal.primary}` : "3px solid #ccc",
+        boxShadow: canRoll
+          ? `0 4px 20px ${pal.primary}40, 0 2px 8px rgba(0,0,0,0.2)`
+          : "0 2px 8px rgba(0,0,0,0.15)",
         cursor: canRoll && !rolling ? "pointer" : "default",
-        position: "relative",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         outline: "none",
+        perspective: 600,
       }}
-      animate={rolling ? { rotateX: [0, 180, 360, 540, 720], rotateY: [0, 90, 270, 90, 0] } : {}}
-      transition={rolling ? { duration: 0.7, ease: "easeInOut" } : {}}
     >
-      <svg width="60" height="60" viewBox="0 0 100 100">
+      <svg width="52" height="52" viewBox="0 0 100 100">
         {(DICE_DOTS[displayValue] || DICE_DOTS[1]).map(([cx, cy], i) => (
-          <circle key={i} cx={cx} cy={cy} r={10} fill={canRoll ? "white" : "rgba(255,255,255,0.3)"} />
+          <circle
+            key={i}
+            cx={cx}
+            cy={cy}
+            r={9}
+            fill={displayValue === 6 && !rolling ? pal.primary : "#333"}
+          />
         ))}
       </svg>
     </motion.button>
@@ -125,106 +140,130 @@ function Dice({ value, rolling, canRoll, onRoll, playerColor }: DiceProps) {
 }
 
 // ─────────────────────────────────────────
-// Board Cell
+// Pin/Pointer Token SVG shape
 // ─────────────────────────────────────────
 
-interface CellProps {
-  row: number;
-  col: number;
-  cellSize: number;
-  children?: React.ReactNode;
-  bg?: string;
-  border?: string;
-  isSafe?: boolean;
-  isEntry?: Record<PlayerColor, boolean>;
-}
-
-// The Ludo board color regions
-function getCellBackground(row: number, col: number): string {
-  // Home yards
-  if (row <= 5 && col <= 5) return "rgba(239,68,68,0.12)";      // red top-left
-  if (row <= 5 && col >= 9) return "rgba(34,197,94,0.12)";       // green top-right
-  if (row >= 9 && col >= 9) return "rgba(234,179,8,0.12)";       // yellow bottom-right
-  if (row >= 9 && col <= 5) return "rgba(59,130,246,0.12)";      // blue bottom-left
-
-  // Colored track cells
-  // Red column (col 6, rows 1-5) — going up
-  if (col === 7 && row >= 1 && row <= 5) return "rgba(239,68,68,0.35)";
-  // Green row (row 6, cols 9-13) — going right from green's turn
-  if (row === 6 && col >= 9 && col <= 13) return "rgba(34,197,94,0.35)";
-  // Yellow column (col 7, rows 9-13) — going down
-  if (col === 7 && row >= 9 && row <= 13) return "rgba(234,179,8,0.35)";
-  // Blue row (row 8, cols 1-5) — going left
-  if (row === 8 && col >= 1 && col <= 5) return "rgba(59,130,246,0.35)";
-
-  // Center triangle areas
-  if (row === 7 && col === 7) return "rgba(255,255,255,0.08)"; // exact center
-
-  return "rgba(255,255,255,0.04)";
+/**
+ * Generates an SVG path for a map-pin / pointer shape.
+ * The pin is centered horizontally; tip points down.
+ * @param r - head circle radius
+ */
+function pinPath(r: number): string {
+  const tipY = r * 1.7;
+  return [
+    `M 0 ${tipY}`,
+    `C ${-r * 0.55} ${r * 0.35} ${-r} ${-r * 0.15} ${-r} ${-r * 0.55}`,
+    `A ${r} ${r} 0 1 1 ${r} ${-r * 0.55}`,
+    `C ${r} ${-r * 0.15} ${r * 0.55} ${r * 0.35} 0 ${tipY}`,
+    `Z`,
+  ].join(" ");
 }
 
 // ─────────────────────────────────────────
-// Token Component
+// Token Component — pointer/pin shaped
 // ─────────────────────────────────────────
 
-interface TokenProps {
+interface TokenPieceProps {
   token: Token;
   cellSize: number;
   isMovable: boolean;
   isSelected: boolean;
   onClick: () => void;
-  yardOffset?: [number, number]; // sub-position within yard cell
+  overridePos?: [number, number]; // [row, col] override for animation
 }
 
-function TokenPiece({ token, cellSize, isMovable, isSelected, onClick, yardOffset }: TokenProps) {
+function TokenPiece({
+  token,
+  cellSize,
+  isMovable,
+  isSelected,
+  onClick,
+  overridePos,
+}: TokenPieceProps) {
   const pal = COLOR_PALETTE[token.color];
-  const [row, col] = getTokenCoord(token, token.color);
+  const pos = overridePos ?? getTokenCoord(token, token.color);
+  const [row, col] = pos;
 
-  // If multiple tokens on same cell in yard, offset slightly
-  const dx = yardOffset ? yardOffset[0] * (cellSize * 0.28) : 0;
-  const dy = yardOffset ? yardOffset[1] * (cellSize * 0.28) : 0;
-
-  const x = col * cellSize + cellSize / 2 + dx;
-  const y = row * cellSize + cellSize / 2 + dy;
-  const r = Math.max(8, cellSize * 0.32);
+  const x = col * cellSize + cellSize / 2;
+  const y = row * cellSize + cellSize / 2;
+  const r = Math.max(7, cellSize * 0.3);
 
   return (
     <motion.g
       onClick={isMovable ? onClick : undefined}
       style={{ cursor: isMovable ? "pointer" : "default" }}
-      animate={{ x, y }}
-      transition={{ type: "spring", stiffness: 300, damping: 28 }}
-      initial={{ x, y }}
+      animate={{ x, y: y - r * 0.4 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30, mass: 0.8 }}
+      initial={false}
     >
-      {/* Glow */}
-      {(isMovable || isSelected) && (
+      {/* Pulsing ring for movable tokens */}
+      {isMovable && (
         <motion.circle
-          cx={0} cy={0} r={r + 6}
+          cx={0}
+          cy={-r * 0.55}
+          r={r + 5}
           fill="none"
-          stroke={isSelected ? "white" : pal.primary}
-          strokeWidth={2}
-          opacity={0.7}
-          animate={{ r: [r + 4, r + 9, r + 4], opacity: [0.7, 1, 0.7] }}
-          transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
+          stroke={pal.primary}
+          strokeWidth={2.5}
+          animate={{ r: [r + 3, r + 8, r + 3], opacity: [0.8, 0.3, 0.8] }}
+          transition={{ repeat: Infinity, duration: 1, ease: "easeInOut" }}
         />
       )}
-      {/* Shadow */}
-      <circle cx={1} cy={2} r={r} fill="rgba(0,0,0,0.4)" />
-      {/* Body */}
-      <circle
-        cx={0} cy={0} r={r}
-        fill={`url(#token-grad-${token.color})`}
-        stroke={isSelected ? "white" : pal.dark}
-        strokeWidth={isSelected ? 2.5 : 1.5}
+      {/* Drop shadow */}
+      <ellipse cx={1} cy={r * 1.9} rx={r * 0.6} ry={r * 0.2} fill="rgba(0,0,0,0.25)" />
+      {/* Pin body */}
+      <path
+        d={pinPath(r)}
+        fill={`url(#pin-grad-${token.color})`}
+        stroke={isSelected ? "#fff" : pal.dark}
+        strokeWidth={isSelected ? 2.5 : 1.2}
       />
-      {/* Inner dot */}
-      <circle cx={0} cy={-r * 0.28} r={r * 0.3} fill="rgba(255,255,255,0.35)" />
+      {/* Inner white circle (face of pin) */}
+      <circle
+        cx={0}
+        cy={-r * 0.55}
+        r={r * 0.52}
+        fill="white"
+        stroke={pal.dark}
+        strokeWidth={0.5}
+        opacity={0.92}
+      />
+      {/* Color dot inside */}
+      <circle cx={0} cy={-r * 0.55} r={r * 0.28} fill={pal.primary} />
     </motion.g>
   );
 }
 
 // ─────────────────────────────────────────
-// Ludo Board SVG
+// Board background helpers
+// ─────────────────────────────────────────
+
+function isTrackCell(row: number, col: number): boolean {
+  return MAIN_TRACK_COORDS.some(([r, c]) => r === row && c === col);
+}
+
+function isHomeStretchCell(
+  row: number,
+  col: number
+): PlayerColor | null {
+  for (const color of ["red", "green", "yellow", "blue"] as PlayerColor[]) {
+    if (HOME_STRETCH_COORDS[color].some(([r, c]) => r === row && c === col)) {
+      return color;
+    }
+  }
+  return null;
+}
+
+function getCellQuadrantColor(row: number, col: number): PlayerColor | null {
+  if (row <= 5 && col <= 5) return "red";
+  if (row <= 5 && col >= 9) return "green";
+  if (row >= 9 && col >= 9) return "yellow";
+  if (row >= 9 && col <= 5) return "blue";
+  return null;
+}
+
+// ─────────────────────────────────────────
+// Ludo Board SVG — traditional bright style
 // ─────────────────────────────────────────
 
 interface BoardProps {
@@ -232,18 +271,28 @@ interface BoardProps {
   selectedToken: string | null;
   onTokenClick: (tokenId: string) => void;
   cellSize: number;
+  animatingToken: string | null;
+  animPos: [number, number] | null;
 }
 
-function LudoBoard({ state, selectedToken, onTokenClick, cellSize }: BoardProps) {
+function LudoBoard({
+  state,
+  selectedToken,
+  onTokenClick,
+  cellSize,
+  animatingToken,
+  animPos,
+}: BoardProps) {
   const size = 15 * cellSize;
+  const movableSet = new Set(state.movablePieces);
 
-  // Build a map of trackPos → tokens for rendering stacked tokens
+  // Track map for stacking
   const trackTokenMap = useMemo(() => {
-    const map = new Map<string, Token[]>();
+    const map = new Map<number, Token[]>();
     for (const player of state.players) {
       for (const token of player.tokens) {
-        if (token.state === "yard" || token.state === "finished") continue;
-        const key = `${token.trackPos}`;
+        if (token.state !== "track" && token.state !== "home") continue;
+        const key = token.trackPos;
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(token);
       }
@@ -251,197 +300,270 @@ function LudoBoard({ state, selectedToken, onTokenClick, cellSize }: BoardProps)
     return map;
   }, [state]);
 
-  // Build yard token map
-  const yardTokenMap = useMemo(() => {
-    const map = new Map<PlayerColor, Token[]>();
-    for (const player of state.players) {
-      const inYard = player.tokens.filter((t) => t.state === "yard");
-      if (inYard.length > 0) map.set(player.color, inYard);
+  // Build set of track cell indices for quick lookup
+  const trackCellSet = useMemo(() => {
+    const s = new Set<string>();
+    MAIN_TRACK_COORDS.forEach(([r, c]) => s.add(`${r},${c}`));
+    for (const color of ["red", "green", "yellow", "blue"] as PlayerColor[]) {
+      HOME_STRETCH_COORDS[color].forEach(([r, c]) => s.add(`${r},${c}`));
     }
-    return map;
-  }, [state]);
-
-  const movableSet = new Set(state.movablePieces);
+    return s;
+  }, []);
 
   return (
     <svg
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
-      style={{ display: "block", borderRadius: 12 }}
+      style={{ display: "block", borderRadius: 10 }}
     >
       <defs>
-        {/* Token gradients */}
+        {/* Pin gradients for each color */}
         {(["red", "green", "yellow", "blue"] as PlayerColor[]).map((color) => {
           const pal = COLOR_PALETTE[color];
           return (
-            <radialGradient key={color} id={`token-grad-${color}`} cx="35%" cy="30%" r="70%">
+            <linearGradient
+              key={color}
+              id={`pin-grad-${color}`}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
               <stop offset="0%" stopColor={pal.light} />
-              <stop offset="100%" stopColor={pal.primary} />
-            </radialGradient>
+              <stop offset="60%" stopColor={pal.primary} />
+              <stop offset="100%" stopColor={pal.dark} />
+            </linearGradient>
           );
         })}
-        {/* Board glow filter */}
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+        <filter id="inner-shadow">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
+          <feOffset dx="1" dy="1" result="offsetBlur" />
+          <feFlood floodColor="rgba(0,0,0,0.15)" result="color" />
+          <feComposite in2="offsetBlur" operator="in" result="shadow" />
           <feMerge>
-            <feMergeNode in="coloredBlur" />
+            <feMergeNode in="shadow" />
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
-        {/* Clip to board */}
-        <clipPath id="board-clip">
-          <rect x={0} y={0} width={size} height={size} rx={12} />
-        </clipPath>
       </defs>
 
-      <g clipPath="url(#board-clip)">
-        {/* Board background */}
-        <rect x={0} y={0} width={size} height={size} fill="#0f0f1a" />
+      {/* Board background — white */}
+      <rect x={0} y={0} width={size} height={size} fill="#f5f0e8" rx={10} />
 
-        {/* Grid cells */}
-        {Array.from({ length: 15 }, (_, row) =>
-          Array.from({ length: 15 }, (_, col) => {
-            const bg = getCellBackground(row, col);
-            const isSafe = SAFE_CELLS.has(MAIN_TRACK_COORDS.findIndex(([r, c]) => r === row && c === col));
-            const trackIdx = MAIN_TRACK_COORDS.findIndex(([r, c]) => r === row && c === col);
-            const isEntry = Object.entries(ENTRY_CELLS).find(([, idx]) => idx === trackIdx);
+      {/* Quadrant colored backgrounds */}
+      {(
+        [
+          { color: "red" as PlayerColor, x: 0, y: 0 },
+          { color: "green" as PlayerColor, x: 9, y: 0 },
+          { color: "yellow" as PlayerColor, x: 9, y: 9 },
+          { color: "blue" as PlayerColor, x: 0, y: 9 },
+        ] as const
+      ).map(({ color, x, y }) => {
+        const pal = COLOR_PALETTE[color];
+        return (
+          <g key={color}>
+            {/* Quadrant fill */}
+            <rect
+              x={x * cellSize}
+              y={y * cellSize}
+              width={6 * cellSize}
+              height={6 * cellSize}
+              fill={pal.primary}
+            />
+            {/* Inner white yard area */}
+            <rect
+              x={(x + 0.6) * cellSize}
+              y={(y + 0.6) * cellSize}
+              width={4.8 * cellSize}
+              height={4.8 * cellSize}
+              fill="white"
+              rx={cellSize * 0.5}
+              filter="url(#inner-shadow)"
+            />
+            {/* 4 token slots in yard */}
+            {YARD_COORDS[color].map(([yr, yc], i) => (
+              <circle
+                key={i}
+                cx={yc * cellSize + cellSize / 2}
+                cy={yr * cellSize + cellSize / 2}
+                r={cellSize * 0.38}
+                fill={pal.yard}
+                stroke={pal.primary}
+                strokeWidth={1.5}
+              />
+            ))}
+          </g>
+        );
+      })}
 
-            return (
-              <g key={`${row}-${col}`}>
-                <rect
-                  x={col * cellSize}
-                  y={row * cellSize}
-                  width={cellSize}
-                  height={cellSize}
-                  fill={bg}
-                  stroke="rgba(255,255,255,0.05)"
-                  strokeWidth={0.5}
-                />
-                {/* Safe star */}
-                {SAFE_CELLS.has(trackIdx) && trackIdx >= 0 && (
-                  <text
-                    x={col * cellSize + cellSize / 2}
-                    y={row * cellSize + cellSize / 2 + 5}
-                    textAnchor="middle"
-                    fontSize={cellSize * 0.5}
-                    fill="rgba(255,215,0,0.55)"
-                  >
-                    ★
-                  </text>
-                )}
-                {/* Entry markers */}
-                {isEntry && (
-                  <circle
-                    cx={col * cellSize + cellSize / 2}
-                    cy={row * cellSize + cellSize / 2}
-                    r={cellSize * 0.18}
-                    fill={COLOR_PALETTE[isEntry[0] as PlayerColor].primary}
-                    opacity={0.4}
-                  />
-                )}
-              </g>
-            );
-          })
-        )}
+      {/* Track cells — white cells with borders */}
+      {MAIN_TRACK_COORDS.map(([r, c], idx) => {
+        // Color the track cell if it's an entry cell or safe/star cell
+        const isEntry = Object.entries(ENTRY_CELLS).find(([, eIdx]) => eIdx === idx);
+        const isSafe = SAFE_CELLS.has(idx);
+        let fill = "white";
+        if (isEntry) {
+          fill = COLOR_PALETTE[isEntry[0] as PlayerColor].yard;
+        }
 
-        {/* Home yard backgrounds */}
-        {(state.players.map((p) => p.color)).map((color) => {
+        return (
+          <g key={`track-${idx}`}>
+            <rect
+              x={c * cellSize + 0.5}
+              y={r * cellSize + 0.5}
+              width={cellSize - 1}
+              height={cellSize - 1}
+              fill={fill}
+              stroke="#bbb"
+              strokeWidth={0.8}
+            />
+            {/* Star on safe cells */}
+            {isSafe && (
+              <text
+                x={c * cellSize + cellSize / 2}
+                y={r * cellSize + cellSize / 2 + cellSize * 0.18}
+                textAnchor="middle"
+                fontSize={cellSize * 0.48}
+                fill={isEntry ? COLOR_PALETTE[isEntry[0] as PlayerColor].dark : "#ccc"}
+                style={{ pointerEvents: "none" }}
+              >
+                ★
+              </text>
+            )}
+            {/* Arrow on entry cells */}
+            {isEntry && !isSafe && (
+              <circle
+                cx={c * cellSize + cellSize / 2}
+                cy={r * cellSize + cellSize / 2}
+                r={cellSize * 0.15}
+                fill={COLOR_PALETTE[isEntry[0] as PlayerColor].primary}
+                opacity={0.5}
+              />
+            )}
+          </g>
+        );
+      })}
+
+      {/* Home stretch colored cells */}
+      {(["red", "green", "yellow", "blue"] as PlayerColor[]).map((color) =>
+        HOME_STRETCH_COORDS[color].slice(0, 5).map(([r, c], i) => {
           const pal = COLOR_PALETTE[color];
-          const yardCoords: Record<PlayerColor, [number, number, number, number]> = {
-            red:    [0.5, 0.5, 5, 5],
-            green:  [9.5, 0.5, 5, 5],
-            yellow: [9.5, 9.5, 5, 5],
-            blue:   [0.5, 9.5, 5, 5],
-          };
-          const [cx, cy, w, h] = yardCoords[color];
           return (
             <rect
-              key={color}
-              x={cy * cellSize}
-              y={cx * cellSize}
-              width={w * cellSize}
-              height={h * cellSize}
-              fill={pal.yard}
-              stroke={pal.primary}
-              strokeWidth={1.5}
-              strokeOpacity={0.4}
-              rx={cellSize * 0.4}
+              key={`hs-${color}-${i}`}
+              x={c * cellSize + 0.5}
+              y={r * cellSize + 0.5}
+              width={cellSize - 1}
+              height={cellSize - 1}
+              fill={pal.primary}
+              stroke={pal.dark}
+              strokeWidth={0.5}
+              opacity={0.85}
             />
           );
-        })}
+        })
+      )}
 
-        {/* Center finish triangle */}
-        {(["red", "green", "yellow", "blue"] as PlayerColor[]).map((color, i) => {
-          const cx = 7 * cellSize + cellSize / 2;
-          const cy2 = 7 * cellSize + cellSize / 2;
-          const r = cellSize * 1.3;
-          const angle = (i * 90 - 45) * (Math.PI / 180);
-          const angle2 = ((i + 1) * 90 - 45) * (Math.PI / 180);
-          const x1 = cx + r * Math.cos(angle);
-          const y1 = cy2 + r * Math.sin(angle);
-          const x2 = cx + r * Math.cos(angle2);
-          const y2 = cy2 + r * Math.sin(angle2);
+      {/* Center home — 4 colored triangles */}
+      {(() => {
+        const cx = 7 * cellSize + cellSize / 2;
+        const cy = 7 * cellSize + cellSize / 2;
+        const half = cellSize * 1.5;
+        const colors: PlayerColor[] = ["red", "green", "yellow", "blue"];
+        // Triangle points: top, right, bottom, left of center square
+        const corners: Array<[number, number]> = [
+          [cx, cy - half],
+          [cx + half, cy],
+          [cx, cy + half],
+          [cx - half, cy],
+        ];
+        return colors.map((color, i) => {
+          const c1 = corners[i];
+          const c2 = corners[(i + 1) % 4];
           return (
             <polygon
               key={color}
-              points={`${cx},${cy2} ${x1},${y1} ${x2},${y2}`}
+              points={`${cx},${cy} ${c1[0]},${c1[1]} ${c2[0]},${c2[1]}`}
               fill={COLOR_PALETTE[color].primary}
-              opacity={0.5}
+              stroke="white"
+              strokeWidth={1.5}
             />
           );
-        })}
+        });
+      })()}
 
-        {/* Home stretch colored paths */}
-        {state.players.map((p) =>
-          HOME_STRETCH_COORDS[p.color].slice(0, 5).map(([r, c], i) => {
-            const pal = COLOR_PALETTE[p.color];
+      {/* Center circle */}
+      <circle
+        cx={7 * cellSize + cellSize / 2}
+        cy={7 * cellSize + cellSize / 2}
+        r={cellSize * 0.4}
+        fill="white"
+        stroke="#ddd"
+        strokeWidth={1}
+      />
+
+      {/* All tokens — yard, track, home stretch */}
+      {state.players.flatMap((player) =>
+        player.tokens.map((token) => {
+          if (token.state === "finished") {
+            // Finished tokens show small in center
+            const angle =
+              (token.index * 90 +
+                { red: -45, green: 45, yellow: 135, blue: 225 }[token.color]) *
+              (Math.PI / 180);
+            const cx2 = 7 * cellSize + cellSize / 2;
+            const cy2 = 7 * cellSize + cellSize / 2;
+            const fr = cellSize * 0.6;
+            const fx = cx2 + fr * Math.cos(angle);
+            const fy = cy2 + fr * Math.sin(angle);
             return (
-              <rect
-                key={`hs-${p.color}-${i}`}
-                x={c * cellSize + 1}
-                y={r * cellSize + 1}
-                width={cellSize - 2}
-                height={cellSize - 2}
-                fill={pal.primary}
-                opacity={0.25}
-                rx={2}
+              <motion.circle
+                key={token.id}
+                cx={fx}
+                cy={fy}
+                r={cellSize * 0.2}
+                fill={COLOR_PALETTE[token.color].primary}
+                stroke="white"
+                strokeWidth={1.5}
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 300 }}
               />
             );
-          })
-        )}
+          }
 
-        {/* Track tokens (not in yard) */}
-        {state.players.flatMap((player) =>
-          player.tokens
-            .filter((t) => t.state === "track" || t.state === "home")
-            .map((token) => {
-              const tokensAtSamePos = (trackTokenMap.get(`${token.trackPos}`) ?? []);
-              const posIndex = tokensAtSamePos.findIndex((t) => t.id === token.id);
-              const total = tokensAtSamePos.length;
-              let yardOffset: [number, number] | undefined;
-              if (total > 1) {
-                const offsets: Array<[number, number]> = [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]];
-                yardOffset = offsets[posIndex % 4];
-              }
-              return (
-                <TokenPiece
-                  key={token.id}
-                  token={token}
-                  cellSize={cellSize}
-                  isMovable={movableSet.has(token.id)}
-                  isSelected={selectedToken === token.id}
-                  onClick={() => onTokenClick(token.id)}
-                  yardOffset={yardOffset}
-                />
-              );
-            })
-        )}
+          // Stacking offset for tokens sharing a cell
+          let stackOffset: [number, number] | undefined;
+          if (token.state === "track" || token.state === "home") {
+            const tokensHere = trackTokenMap.get(token.trackPos) ?? [];
+            if (tokensHere.length > 1) {
+              const idx = tokensHere.findIndex((t) => t.id === token.id);
+              const offsets: Array<[number, number]> = [
+                [-0.3, -0.3],
+                [0.3, -0.3],
+                [-0.3, 0.3],
+                [0.3, 0.3],
+              ];
+              stackOffset = offsets[idx % 4];
+            }
+          }
 
-        {/* Yard tokens */}
-        {state.players.flatMap((player) => {
-          const yardTokens = yardTokenMap.get(player.color) ?? [];
-          return yardTokens.map((token, i) => (
+          const isAnimating = animatingToken === token.id;
+          let overridePos: [number, number] | undefined;
+          if (isAnimating && animPos) {
+            overridePos = animPos;
+          }
+          if (stackOffset && !overridePos) {
+            // Apply stack offset via a slightly different position
+            const base = getTokenCoord(token, token.color);
+            overridePos = [
+              base[0] + stackOffset[0],
+              base[1] + stackOffset[1],
+            ];
+          }
+
+          return (
             <TokenPiece
               key={token.id}
               token={token}
@@ -449,38 +571,11 @@ function LudoBoard({ state, selectedToken, onTokenClick, cellSize }: BoardProps)
               isMovable={movableSet.has(token.id)}
               isSelected={selectedToken === token.id}
               onClick={() => onTokenClick(token.id)}
+              overridePos={overridePos}
             />
-          ));
-        })}
-
-        {/* Finished tokens in center */}
-        {state.players.flatMap((player) =>
-          player.tokens
-            .filter((t) => t.state === "finished")
-            .map((token, i) => {
-              const pal = COLOR_PALETTE[token.color];
-              const cx2 = 7 * cellSize + cellSize / 2;
-              const cy3 = 7 * cellSize + cellSize / 2;
-              const angle = (i * 90 + { red: 0, green: 90, yellow: 180, blue: 270 }[token.color]) * (Math.PI / 180);
-              const fx = cx2 + (cellSize * 0.5) * Math.cos(angle);
-              const fy = cy3 + (cellSize * 0.5) * Math.sin(angle);
-              return (
-                <motion.circle
-                  key={token.id}
-                  cx={fx}
-                  cy={fy}
-                  r={cellSize * 0.25}
-                  fill={pal.primary}
-                  stroke="white"
-                  strokeWidth={1}
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                />
-              );
-            })
-        )}
-      </g>
+          );
+        })
+      )}
     </svg>
   );
 }
@@ -497,77 +592,83 @@ interface PlayerPanelProps {
 
 function PlayerPanel({ player, isCurrentTurn, finishPosition }: PlayerPanelProps) {
   const pal = COLOR_PALETTE[player.color];
-  const finished = player.tokens.filter((t) => t.state === "finished").length;
-  const inYard = player.tokens.filter((t) => t.state === "yard").length;
 
   return (
     <motion.div
       animate={{
         boxShadow: isCurrentTurn
-          ? [`0 0 0 2px ${pal.primary}`, `0 0 20px ${pal.glow}`, `0 0 0 2px ${pal.primary}`]
-          : "0 0 0 1px rgba(255,255,255,0.08)",
+          ? `0 0 0 2px ${pal.primary}, 0 0 16px ${pal.primary}50`
+          : "0 0 0 1px #e0e0e0",
       }}
-      transition={{ repeat: isCurrentTurn ? Infinity : 0, duration: 1.5 }}
+      transition={{ duration: 0.3 }}
       style={{
         borderRadius: 12,
         padding: "10px 14px",
-        background: "rgba(255,255,255,0.04)",
-        border: `1px solid ${isCurrentTurn ? pal.primary : "rgba(255,255,255,0.08)"}`,
+        background: isCurrentTurn ? pal.yard : "#fafafa",
+        border: `2px solid ${isCurrentTurn ? pal.primary : "#e0e0e0"}`,
         opacity: player.hasFinished ? 0.6 : 1,
         position: "relative",
         overflow: "hidden",
       }}
     >
-      {isCurrentTurn && (
-        <motion.div
-          style={{
-            position: "absolute", inset: 0,
-            background: `linear-gradient(135deg, ${pal.glow}, transparent)`,
-            pointerEvents: "none",
-          }}
-          animate={{ opacity: [0.3, 0.6, 0.3] }}
-          transition={{ repeat: Infinity, duration: 2 }}
-        />
-      )}
-
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{
-          width: 14, height: 14, borderRadius: "50%",
-          background: pal.primary,
-          boxShadow: `0 0 8px ${pal.glow}`,
-          flexShrink: 0,
-        }} />
-        <span style={{ color: "white", fontWeight: 700, fontSize: 13 }}>
+        <div
+          style={{
+            width: 16,
+            height: 16,
+            borderRadius: "50%",
+            background: pal.primary,
+            flexShrink: 0,
+            border: `2px solid ${pal.dark}`,
+          }}
+        />
+        <span style={{ color: "#333", fontWeight: 700, fontSize: 13 }}>
           {player.name}
           {player.type === "ai" && (
-            <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400, fontSize: 10, marginLeft: 4 }}>
+            <span
+              style={{
+                color: "#888",
+                fontWeight: 400,
+                fontSize: 10,
+                marginLeft: 4,
+              }}
+            >
               ({player.aiLevel})
             </span>
           )}
         </span>
-        {finishPosition && (
-          <span style={{
-            marginLeft: "auto", fontSize: 11, fontWeight: 700,
-            color: finishPosition === 1 ? "#ffd700" : "rgba(255,255,255,0.5)",
-          }}>
+        {finishPosition !== undefined && (
+          <span
+            style={{
+              marginLeft: "auto",
+              fontSize: 13,
+              fontWeight: 700,
+              color: finishPosition === 1 ? "#F9A825" : "#888",
+            }}
+          >
             {finishPosition === 1 ? "🏆" : `#${finishPosition}`}
           </span>
         )}
       </div>
 
-      {/* Token status */}
-      <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+      {/* Token status dots */}
+      <div style={{ display: "flex", gap: 5, marginTop: 6 }}>
         {player.tokens.map((t) => (
           <div
             key={t.id}
             style={{
-              width: 10, height: 10, borderRadius: "50%",
-              background: t.state === "finished" ? pal.primary :
-                         t.state === "yard" ? "rgba(255,255,255,0.15)" :
-                         t.state === "home" ? pal.light : pal.primary,
-              border: `1px solid ${t.state === "finished" ? "white" : pal.dark}`,
-              boxShadow: t.state === "track" || t.state === "home" ? `0 0 6px ${pal.glow}` : "none",
-              opacity: t.state === "yard" ? 0.4 : 1,
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background:
+                t.state === "finished"
+                  ? pal.primary
+                  : t.state === "yard"
+                  ? "#ddd"
+                  : pal.light,
+              border: `1.5px solid ${
+                t.state === "finished" ? pal.dark : t.state === "yard" ? "#bbb" : pal.primary
+              }`,
             }}
           />
         ))}
@@ -576,8 +677,13 @@ function PlayerPanel({ player, isCurrentTurn, finishPosition }: PlayerPanelProps
       {isCurrentTurn && (
         <motion.div
           style={{
-            position: "absolute", top: 4, right: 8,
-            fontSize: 9, color: pal.light, fontWeight: 700, letterSpacing: 1,
+            position: "absolute",
+            top: 4,
+            right: 8,
+            fontSize: 9,
+            color: pal.dark,
+            fontWeight: 700,
+            letterSpacing: 1,
           }}
           animate={{ opacity: [1, 0.3, 1] }}
           transition={{ repeat: Infinity, duration: 0.9 }}
@@ -598,14 +704,17 @@ interface MenuConfig {
   playerTypes: Array<{ type: PlayerType; aiLevel?: AILevel }>;
 }
 
-interface MenuScreenProps {
+function MenuScreen({
+  stats,
+  onStart,
+}: {
   stats: LudoStats;
   onStart: (config: MenuConfig) => void;
-}
-
-function MenuScreen({ stats, onStart }: MenuScreenProps) {
+}) {
   const [numPlayers, setNumPlayers] = useState<2 | 3 | 4>(2);
-  const [playerTypes, setPlayerTypes] = useState<Array<{ type: PlayerType; aiLevel?: AILevel }>>([
+  const [playerTypes, setPlayerTypes] = useState<
+    Array<{ type: PlayerType; aiLevel?: AILevel }>
+  >([
     { type: "human" },
     { type: "ai", aiLevel: "medium" },
     { type: "ai", aiLevel: "medium" },
@@ -618,100 +727,93 @@ function MenuScreen({ stats, onStart }: MenuScreenProps) {
     setPlayerTypes((prev) => {
       const next = [...prev];
       if (next[i].type === "human") {
-        next[i] = { type: "ai", aiLevel: "medium" };
+        next[i] = { type: "ai", aiLevel: "easy" };
       } else if (next[i].aiLevel === "easy") {
-        next[i] = { type: "human" };
+        next[i] = { type: "ai", aiLevel: "medium" };
       } else if (next[i].aiLevel === "medium") {
         next[i] = { type: "ai", aiLevel: "hard" };
       } else {
-        next[i] = { type: "ai", aiLevel: "easy" };
+        next[i] = { type: "human" };
       }
       return next;
     });
   };
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "linear-gradient(160deg, #0a0a1a 0%, #0d0720 50%, #0a0a1a 100%)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "24px 16px",
-    }}>
-      {/* Ambient blobs */}
-      <div style={{
-        position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden",
-      }}>
-        {["#ef444422", "#22c55e22", "#eab30822", "#3b82f622"].map((color, i) => (
-          <motion.div
-            key={i}
-            style={{
-              position: "absolute",
-              width: 400, height: 400,
-              borderRadius: "50%",
-              background: `radial-gradient(circle, ${color}, transparent 70%)`,
-              left: `${[10, 60, 10, 60][i]}%`,
-              top: `${[10, 10, 60, 60][i]}%`,
-              transform: "translate(-50%, -50%)",
-            }}
-            animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.8, 0.4] }}
-            transition={{ repeat: Infinity, duration: 4 + i * 1.5, ease: "easeInOut" }}
-          />
-        ))}
-      </div>
-
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "linear-gradient(160deg, #fffde7 0%, #fff3e0 50%, #e3f2fd 100%)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "24px 16px",
+      }}
+    >
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         style={{
-          width: "100%", maxWidth: 460,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.1)",
+          width: "100%",
+          maxWidth: 460,
+          background: "white",
+          border: "1px solid #e0e0e0",
           borderRadius: 24,
           padding: "36px 32px",
-          backdropFilter: "blur(20px)",
-          position: "relative", zIndex: 1,
+          boxShadow: "0 8px 40px rgba(0,0,0,0.1)",
         }}
       >
         {/* Title */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <motion.h1
+          <h1
             style={{
-              fontSize: 42, fontWeight: 900, letterSpacing: -1,
-              background: "linear-gradient(135deg, #ef4444, #eab308, #22c55e, #3b82f6)",
-              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+              fontSize: 48,
+              fontWeight: 900,
+              letterSpacing: -1,
+              background:
+                "linear-gradient(135deg, #D32F2F, #F9A825, #388E3C, #1565C0)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
               marginBottom: 8,
             }}
-            animate={{ backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
-            transition={{ repeat: Infinity, duration: 5 }}
           >
             LUDO
-          </motion.h1>
-          <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 14 }}>
+          </h1>
+          <p style={{ color: "#888", fontSize: 14 }}>
             Race your tokens home — roll, capture, win
           </p>
         </div>
 
         {/* Stats */}
         {stats.gamesPlayed > 0 && (
-          <div style={{
-            display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-            gap: 8, marginBottom: 28,
-          }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 8,
+              marginBottom: 28,
+            }}
+          >
             {[
-              { label: "Wins", value: stats.wins, color: "#22c55e" },
-              { label: "Losses", value: stats.losses, color: "#ef4444" },
-              { label: "Streak", value: stats.winStreak, color: "#eab308" },
+              { label: "Wins", value: stats.wins, color: "#388E3C" },
+              { label: "Losses", value: stats.losses, color: "#D32F2F" },
+              { label: "Streak", value: stats.winStreak, color: "#F9A825" },
             ].map(({ label, value, color }) => (
-              <div key={label} style={{
-                background: "rgba(255,255,255,0.05)",
-                borderRadius: 10, padding: "8px 4px", textAlign: "center",
-                border: "1px solid rgba(255,255,255,0.08)",
-              }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color }}>{value}</div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", letterSpacing: 0.5 }}>{label}</div>
+              <div
+                key={label}
+                style={{
+                  background: "#fafafa",
+                  borderRadius: 10,
+                  padding: "8px 4px",
+                  textAlign: "center",
+                  border: "1px solid #eee",
+                }}
+              >
+                <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
+                <div style={{ fontSize: 10, color: "#999", letterSpacing: 0.5 }}>
+                  {label}
+                </div>
               </div>
             ))}
           </div>
@@ -719,7 +821,15 @@ function MenuScreen({ stats, onStart }: MenuScreenProps) {
 
         {/* Number of players */}
         <div style={{ marginBottom: 24 }}>
-          <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, marginBottom: 10, letterSpacing: 1, fontWeight: 600 }}>
+          <p
+            style={{
+              color: "#666",
+              fontSize: 12,
+              marginBottom: 10,
+              letterSpacing: 1,
+              fontWeight: 700,
+            }}
+          >
             PLAYERS
           </p>
           <div style={{ display: "flex", gap: 8 }}>
@@ -730,10 +840,18 @@ function MenuScreen({ stats, onStart }: MenuScreenProps) {
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.96 }}
                 style={{
-                  flex: 1, padding: "10px 0", borderRadius: 10,
-                  border: numPlayers === n ? "1px solid rgba(255,255,255,0.4)" : "1px solid rgba(255,255,255,0.1)",
-                  background: numPlayers === n ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
-                  color: "white", fontSize: 18, fontWeight: 700, cursor: "pointer",
+                  flex: 1,
+                  padding: "10px 0",
+                  borderRadius: 10,
+                  border:
+                    numPlayers === n
+                      ? "2px solid #1565C0"
+                      : "2px solid #e0e0e0",
+                  background: numPlayers === n ? "#e3f2fd" : "white",
+                  color: numPlayers === n ? "#1565C0" : "#666",
+                  fontSize: 18,
+                  fontWeight: 700,
+                  cursor: "pointer",
                 }}
               >
                 {n}
@@ -744,14 +862,23 @@ function MenuScreen({ stats, onStart }: MenuScreenProps) {
 
         {/* Player configuration */}
         <div style={{ marginBottom: 28 }}>
-          <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, marginBottom: 10, letterSpacing: 1, fontWeight: 600 }}>
+          <p
+            style={{
+              color: "#666",
+              fontSize: 12,
+              marginBottom: 10,
+              letterSpacing: 1,
+              fontWeight: 700,
+            }}
+          >
             SETUP
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {colors.map((color, i) => {
               const pal = COLOR_PALETTE[color];
               const cfg = playerTypes[i];
-              const label = cfg.type === "human" ? "Human" : `AI · ${cfg.aiLevel}`;
+              const label =
+                cfg.type === "human" ? "Human" : `AI · ${cfg.aiLevel}`;
               return (
                 <motion.button
                   key={color}
@@ -759,39 +886,53 @@ function MenuScreen({ stats, onStart }: MenuScreenProps) {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   style={{
-                    display: "flex", alignItems: "center", gap: 12,
-                    padding: "10px 14px", borderRadius: 10,
-                    border: `1px solid ${pal.primary}44`,
-                    background: `${pal.yard}`,
-                    cursor: "pointer", textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: `2px solid ${pal.primary}30`,
+                    background: pal.yard,
+                    cursor: "pointer",
+                    textAlign: "left",
                   }}
                 >
-                  <div style={{
-                    width: 16, height: 16, borderRadius: "50%",
-                    background: pal.primary, flexShrink: 0,
-                    boxShadow: `0 0 8px ${pal.glow}`,
-                  }} />
-                  <span style={{ color: "white", fontWeight: 600, fontSize: 13, flex: 1 }}>
-                    {pal.text === "#000" ? (
-                      <span style={{ background: pal.primary, color: "#000", borderRadius: 4, padding: "1px 6px", fontSize: 11 }}>
-                        {pal.primary === "#eab308" ? "Yellow" : "Blue"}
-                      </span>
-                    ) : color.charAt(0).toUpperCase() + color.slice(1)}
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      background: pal.primary,
+                      flexShrink: 0,
+                      border: `2px solid ${pal.dark}`,
+                    }}
+                  />
+                  <span
+                    style={{ color: "#333", fontWeight: 600, fontSize: 14, flex: 1 }}
+                  >
+                    {color.charAt(0).toUpperCase() + color.slice(1)}
                   </span>
-                  <span style={{
-                    color: cfg.type === "human" ? "#60a5fa" : "#34d399",
-                    fontSize: 12, fontWeight: 600,
-                    background: cfg.type === "human" ? "rgba(96,165,250,0.15)" : "rgba(52,211,153,0.15)",
-                    padding: "3px 10px", borderRadius: 6,
-                  }}>
+                  <span
+                    style={{
+                      color: cfg.type === "human" ? "#1565C0" : "#388E3C",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background:
+                        cfg.type === "human"
+                          ? "rgba(21,101,192,0.1)"
+                          : "rgba(56,142,60,0.1)",
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                    }}
+                  >
                     {label}
                   </span>
                 </motion.button>
               );
             })}
           </div>
-          <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, marginTop: 8 }}>
-            Click a player to cycle: Human → AI Easy → AI Medium → AI Hard → Human
+          <p style={{ color: "#aaa", fontSize: 11, marginTop: 8 }}>
+            Click to cycle: Human → AI Easy → Medium → Hard → Human
           </p>
         </div>
 
@@ -799,17 +940,26 @@ function MenuScreen({ stats, onStart }: MenuScreenProps) {
         <motion.button
           onClick={() => {
             audio.click();
-            onStart({ numPlayers, playerTypes: playerTypes.slice(0, numPlayers) });
+            onStart({
+              numPlayers,
+              playerTypes: playerTypes.slice(0, numPlayers),
+            });
           }}
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           style={{
-            width: "100%", padding: "14px 0",
-            background: "linear-gradient(135deg, #ef4444, #eab308, #22c55e, #3b82f6)",
-            border: "none", borderRadius: 12,
-            color: "white", fontSize: 16, fontWeight: 800,
-            cursor: "pointer", letterSpacing: 1,
-            boxShadow: "0 0 32px rgba(239,68,68,0.3), 0 4px 16px rgba(0,0,0,0.4)",
+            width: "100%",
+            padding: "14px 0",
+            background:
+              "linear-gradient(135deg, #D32F2F, #F9A825, #388E3C, #1565C0)",
+            border: "none",
+            borderRadius: 12,
+            color: "white",
+            fontSize: 18,
+            fontWeight: 800,
+            cursor: "pointer",
+            letterSpacing: 2,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
           }}
         >
           PLAY
@@ -823,14 +973,17 @@ function MenuScreen({ stats, onStart }: MenuScreenProps) {
 // Game Over Screen
 // ─────────────────────────────────────────
 
-interface GameOverProps {
+function GameOverScreen({
+  state,
+  stats,
+  onPlayAgain,
+  onMenu,
+}: {
   state: LudoState;
   stats: LudoStats;
   onPlayAgain: () => void;
   onMenu: () => void;
-}
-
-function GameOverScreen({ state, stats, onPlayAgain, onMenu }: GameOverProps) {
+}) {
   const winner = state.finishOrder[0];
   const pal = winner ? COLOR_PALETTE[winner] : COLOR_PALETTE.red;
 
@@ -839,10 +992,14 @@ function GameOverScreen({ state, stats, onPlayAgain, onMenu }: GameOverProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       style={{
-        position: "fixed", inset: 0, zIndex: 100,
-        background: "rgba(0,0,0,0.85)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        backdropFilter: "blur(12px)",
+        position: "fixed",
+        inset: 0,
+        zIndex: 100,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backdropFilter: "blur(8px)",
       }}
     >
       <motion.div
@@ -850,12 +1007,14 @@ function GameOverScreen({ state, stats, onPlayAgain, onMenu }: GameOverProps) {
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 260, damping: 22 }}
         style={{
-          width: "90%", maxWidth: 360,
-          background: "rgba(20,20,40,0.95)",
-          border: `2px solid ${pal.primary}`,
-          borderRadius: 24, padding: "36px 28px",
+          width: "90%",
+          maxWidth: 380,
+          background: "white",
+          border: `3px solid ${pal.primary}`,
+          borderRadius: 24,
+          padding: "36px 28px",
           textAlign: "center",
-          boxShadow: `0 0 60px ${pal.glow}, 0 0 120px ${pal.glow}40`,
+          boxShadow: `0 8px 60px rgba(0,0,0,0.2)`,
         }}
       >
         <motion.div
@@ -865,53 +1024,53 @@ function GameOverScreen({ state, stats, onPlayAgain, onMenu }: GameOverProps) {
         >
           🏆
         </motion.div>
-        <h2 style={{
-          fontSize: 28, fontWeight: 900, color: pal.primary,
-          marginBottom: 4, letterSpacing: -0.5,
-        }}>
-          {winner ? `${winner.charAt(0).toUpperCase() + winner.slice(1)} Wins!` : "Game Over"}
+        <h2
+          style={{
+            fontSize: 28,
+            fontWeight: 900,
+            color: pal.primary,
+            marginBottom: 4,
+          }}
+        >
+          {winner
+            ? `${winner.charAt(0).toUpperCase() + winner.slice(1)} Wins!`
+            : "Game Over"}
         </h2>
-        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, marginBottom: 24 }}>
+        <p style={{ color: "#888", fontSize: 14, marginBottom: 24 }}>
           {state.players.find((p) => p.color === winner)?.type === "human"
-            ? "Congratulations! You raced all tokens home."
+            ? "Congratulations!"
             : "The AI won this round."}
         </p>
 
         {/* Finish order */}
         <div style={{ marginBottom: 24 }}>
-          {state.finishOrder.map((color, i) => {
-            const p = COLOR_PALETTE[color];
-            return (
-              <div key={color} style={{
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "6px 12px", borderRadius: 8, marginBottom: 4,
-                background: i === 0 ? "rgba(255,215,0,0.1)" : "rgba(255,255,255,0.04)",
-              }}>
-                <span style={{ fontSize: 16 }}>{["🥇","🥈","🥉","4️⃣"][i]}</span>
-                <div style={{ width: 10, height: 10, borderRadius: "50%", background: p.primary }} />
-                <span style={{ color: "white", fontWeight: 600, fontSize: 13 }}>
-                  {color.charAt(0).toUpperCase() + color.slice(1)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Stats */}
-        <div style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr",
-          gap: 8, marginBottom: 24,
-        }}>
-          {[
-            { label: "Total Wins", value: stats.wins },
-            { label: "Win Streak", value: stats.winStreak },
-          ].map(({ label, value }) => (
-            <div key={label} style={{
-              background: "rgba(255,255,255,0.05)", borderRadius: 10,
-              padding: "8px 4px", border: "1px solid rgba(255,255,255,0.08)",
-            }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: "white" }}>{value}</div>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{label}</div>
+          {state.finishOrder.map((color, i) => (
+            <div
+              key={color}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "6px 12px",
+                borderRadius: 8,
+                marginBottom: 4,
+                background: i === 0 ? "#FFF9C4" : "#fafafa",
+              }}
+            >
+              <span style={{ fontSize: 16 }}>
+                {["🥇", "🥈", "🥉", "4️⃣"][i]}
+              </span>
+              <div
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  background: COLOR_PALETTE[color].primary,
+                }}
+              />
+              <span style={{ color: "#333", fontWeight: 600, fontSize: 13 }}>
+                {color.charAt(0).toUpperCase() + color.slice(1)}
+              </span>
             </div>
           ))}
         </div>
@@ -922,10 +1081,15 @@ function GameOverScreen({ state, stats, onPlayAgain, onMenu }: GameOverProps) {
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             style={{
-              flex: 1, padding: "12px 0", borderRadius: 10,
-              border: "1px solid rgba(255,255,255,0.15)",
-              background: "rgba(255,255,255,0.07)",
-              color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer",
+              flex: 1,
+              padding: "12px 0",
+              borderRadius: 10,
+              border: "2px solid #e0e0e0",
+              background: "white",
+              color: "#666",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
             }}
           >
             Menu
@@ -935,11 +1099,15 @@ function GameOverScreen({ state, stats, onPlayAgain, onMenu }: GameOverProps) {
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             style={{
-              flex: 1, padding: "12px 0", borderRadius: 10,
-              border: `1px solid ${pal.primary}`,
-              background: `linear-gradient(135deg, ${pal.primary}, ${pal.dark})`,
-              color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer",
-              boxShadow: `0 0 16px ${pal.glow}`,
+              flex: 1,
+              padding: "12px 0",
+              borderRadius: 10,
+              border: `2px solid ${pal.primary}`,
+              background: pal.primary,
+              color: "white",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
             }}
           >
             Play Again
@@ -963,9 +1131,15 @@ export function LudoGame() {
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
   const [diceRolling, setDiceRolling] = useState(false);
   const [stats, setStats] = useState<LudoStats>(() => {
-    if (typeof window === "undefined") return {
-      wins: 0, losses: 0, captures: 0, gamesPlayed: 0, winStreak: 0, bestStreak: 0,
-    };
+    if (typeof window === "undefined")
+      return {
+        wins: 0,
+        losses: 0,
+        captures: 0,
+        gamesPlayed: 0,
+        winStreak: 0,
+        bestStreak: 0,
+      };
     return loadStats();
   });
   const [captureFlash, setCaptureFlash] = useState<string | null>(null);
@@ -973,11 +1147,17 @@ export function LudoGame() {
   const [gameCaptures, setGameCaptures] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
 
+  // Step-by-step animation state
+  const [animatingToken, setAnimatingToken] = useState<string | null>(null);
+  const [animPos, setAnimPos] = useState<[number, number] | null>(null);
+  const animLockRef = useRef(false);
+
   const stateRef = useRef<LudoState | null>(null);
-  const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  );
   const isProcessingRef = useRef(false);
 
-  // Keep stateRef in sync
   useEffect(() => {
     stateRef.current = gameState;
   }, [gameState]);
@@ -987,9 +1167,9 @@ export function LudoGame() {
   useEffect(() => {
     function handleResize() {
       const vw = Math.min(window.innerWidth * 0.95, 600);
-      const vh = window.innerHeight * 0.65;
+      const vh = window.innerHeight * 0.6;
       const maxBoard = Math.min(vw, vh);
-      setCellSize(Math.max(24, Math.floor(maxBoard / 15)));
+      setCellSize(Math.max(22, Math.floor(maxBoard / 15)));
     }
     handleResize();
     window.addEventListener("resize", handleResize);
@@ -1001,41 +1181,94 @@ export function LudoGame() {
     setTimeout(() => setStatusMessage(""), duration);
   }, []);
 
-  const handleMoveResult = useCallback((result: MoveResult) => {
-    if (result.enteredBoard) {
-      audio.tokenEnter();
-      showStatus("Token entered the board!");
-    } else if (result.finished) {
-      audio.tokenFinish();
-      showStatus("Token finished! 🎉");
-    } else if (result.enteredHome) {
-      audio.homeStretch();
-      showStatus("Home stretch!");
-    } else {
-      audio.tokenStep();
-    }
+  /**
+   * Animate a token along waypoints step-by-step, then apply the final state.
+   */
+  const animateAndApply = useCallback(
+    (
+      tokenId: string,
+      result: MoveResult,
+      callback?: () => void
+    ) => {
+      const path = result.movePath;
 
-    if (result.captured && result.capturedToken) {
-      audio.capture();
-      setCaptureFlash(result.capturedToken.color);
-      setGameCaptures((c) => c + 1);
-      showStatus(`${result.capturedToken!.color.toUpperCase()} token captured! 😱`, 2500);
-      setTimeout(() => setCaptureFlash(null), 800);
-    }
+      if (path.length === 0) {
+        // No movement path (shouldn't happen but safety)
+        setGameState(result.newState);
+        if (callback) callback();
+        return;
+      }
 
-    setGameState(result.newState);
+      animLockRef.current = true;
+      setAnimatingToken(tokenId);
 
-    if (result.newState.phase === "gameover") {
-      audio.victory();
-      // Update stats
-      const humanPlayer = result.newState.players.find((p) => p.type === "human");
-      const humanWon = humanPlayer ? result.newState.finishOrder[0] === humanPlayer.color : false;
-      const updatedStats = updateStats(stats, humanWon, gameCaptures + (result.captured ? 1 : 0));
-      setStats(updatedStats);
-      saveStats(updatedStats);
-      setTimeout(() => setShowGameOver(true), 1200);
-    }
-  }, [stats, gameCaptures, showStatus]);
+      let step = 0;
+      const stepDelay = Math.max(80, 160 - path.length * 10); // faster for longer moves
+
+      const doStep = () => {
+        if (step >= path.length) {
+          // Animation done — apply the real state
+          setAnimatingToken(null);
+          setAnimPos(null);
+          animLockRef.current = false;
+
+          // Sound effects for the final result
+          if (result.enteredBoard) {
+            audio.tokenEnter();
+            showStatus("Token entered the board!");
+          } else if (result.finished) {
+            audio.tokenFinish();
+            showStatus("Token finished! 🎉");
+          } else if (result.enteredHome) {
+            audio.homeStretch();
+            showStatus("Home stretch!");
+          }
+
+          if (result.captured && result.capturedToken) {
+            audio.capture();
+            setCaptureFlash(result.capturedToken.color);
+            setGameCaptures((c) => c + 1);
+            showStatus(
+              `${result.capturedToken!.color.toUpperCase()} captured!`,
+              2500
+            );
+            setTimeout(() => setCaptureFlash(null), 800);
+          }
+
+          setGameState(result.newState);
+
+          if (result.newState.phase === "gameover") {
+            audio.victory();
+            const humanPlayer = result.newState.players.find(
+              (p) => p.type === "human"
+            );
+            const humanWon = humanPlayer
+              ? result.newState.finishOrder[0] === humanPlayer.color
+              : false;
+            const updatedStats = updateStats(
+              stats,
+              humanWon,
+              gameCaptures + (result.captured ? 1 : 0)
+            );
+            setStats(updatedStats);
+            saveStats(updatedStats);
+            setTimeout(() => setShowGameOver(true), 1200);
+          }
+
+          if (callback) callback();
+          return;
+        }
+
+        setAnimPos(path[step]);
+        audio.tokenStep();
+        step++;
+        setTimeout(doStep, stepDelay);
+      };
+
+      doStep();
+    },
+    [stats, gameCaptures, showStatus]
+  );
 
   // AI turn logic
   const runAITurn = useCallback(() => {
@@ -1050,10 +1283,12 @@ export function LudoGame() {
       return;
     }
 
-    // Roll dice with delay
     aiTimeoutRef.current = setTimeout(() => {
       const currentState = stateRef.current;
-      if (!currentState) { isProcessingRef.current = false; return; }
+      if (!currentState) {
+        isProcessingRef.current = false;
+        return;
+      }
 
       setDiceRolling(true);
       audio.diceShake();
@@ -1070,28 +1305,32 @@ export function LudoGame() {
           const next = deepCloneState(prev);
           next.dice = diceValue;
           next.diceRolled = true;
-          next.consecutiveSixes = diceValue === 6 ? next.consecutiveSixes + 1 : 0;
+          next.consecutiveSixes =
+            diceValue === 6 ? next.consecutiveSixes + 1 : 0;
           const movable = getMovableTokens(next);
           next.movablePieces = movable;
           return next;
         });
 
-        // Choose and apply move
         setTimeout(() => {
           const updatedState = stateRef.current;
-          if (!updatedState) { isProcessingRef.current = false; return; }
+          if (!updatedState) {
+            isProcessingRef.current = false;
+            return;
+          }
 
           const movable = updatedState.movablePieces;
           if (movable.length === 0) {
-            // No moves
             const newState = handleNoMoves(updatedState);
             setGameState(newState);
             isProcessingRef.current = false;
             return;
           }
 
-          // Consecutive sixes forfeit
-          if (updatedState.dice === 6 && updatedState.consecutiveSixes >= 3) {
+          if (
+            updatedState.dice === 6 &&
+            updatedState.consecutiveSixes >= 3
+          ) {
             const newState = handleNoMoves(updatedState);
             setGameState(newState);
             isProcessingRef.current = false;
@@ -1099,23 +1338,27 @@ export function LudoGame() {
           }
 
           const tokenId = getAIMove(updatedState);
-          if (!tokenId) { isProcessingRef.current = false; return; }
+          if (!tokenId) {
+            isProcessingRef.current = false;
+            return;
+          }
 
           const result = applyMove(updatedState, tokenId);
-          handleMoveResult(result);
-          isProcessingRef.current = false;
-        }, 600);
+          animateAndApply(tokenId, result, () => {
+            isProcessingRef.current = false;
+          });
+        }, 500);
       }, 700);
-    }, 800);
-  }, [handleMoveResult]);
+    }, 600);
+  }, [animateAndApply]);
 
   // Watch for AI turn
   useEffect(() => {
     if (!gameState || gameState.phase !== "playing") return;
-    if (diceRolling) return;
+    if (diceRolling || animLockRef.current) return;
     const currentPlayer = getCurrentPlayer(gameState);
     if (currentPlayer.type !== "ai") return;
-    if (gameState.diceRolled) return; // mid-turn, handled by runAITurn callback
+    if (gameState.diceRolled) return;
 
     const timeout = setTimeout(() => {
       runAITurn();
@@ -1132,6 +1375,9 @@ export function LudoGame() {
     setShowGameOver(false);
     setGameCaptures(0);
     isProcessingRef.current = false;
+    animLockRef.current = false;
+    setAnimatingToken(null);
+    setAnimPos(null);
   }, []);
 
   const handlePlayAgain = useCallback(() => {
@@ -1143,7 +1389,7 @@ export function LudoGame() {
   const handleRollDice = useCallback(() => {
     if (!gameState) return;
     if (gameState.diceRolled) return;
-    if (diceRolling) return;
+    if (diceRolling || animLockRef.current) return;
     if (isProcessingRef.current) return;
 
     const currentPlayer = getCurrentPlayer(gameState);
@@ -1163,59 +1409,54 @@ export function LudoGame() {
         const next = deepCloneState(prev);
         next.dice = diceValue;
         next.diceRolled = true;
-        next.consecutiveSixes = diceValue === 6 ? next.consecutiveSixes + 1 : 0;
+        next.consecutiveSixes =
+          diceValue === 6 ? next.consecutiveSixes + 1 : 0;
         const movable = getMovableTokens(next);
         next.movablePieces = movable;
-
-        if (movable.length === 0) {
-          // Auto-advance after brief pause
-          return next; // handled in effect
-        }
         return next;
       });
     }, 700);
   }, [gameState, diceRolling]);
 
-  // Auto-advance when no moves available after dice roll
+  // Auto-advance when no moves available after dice roll (human)
   useEffect(() => {
     if (!gameState) return;
     if (!gameState.diceRolled) return;
     if (gameState.movablePieces.length > 0) return;
-    if (diceRolling) return;
+    if (diceRolling || animLockRef.current) return;
 
     const currentPlayer = getCurrentPlayer(gameState);
     if (currentPlayer.type !== "human") return;
 
     const timeout = setTimeout(() => {
-      setGameState((prev) => {
-        if (!prev) return prev;
-        showStatus("No moves available — skipping turn", 1500);
-        return handleNoMoves(prev);
-      });
+      showStatus("No moves available — skipping turn", 1500);
+      setGameState((prev) => (prev ? handleNoMoves(prev) : prev));
     }, 1200);
     return () => clearTimeout(timeout);
   }, [gameState, diceRolling, showStatus]);
 
-  const handleTokenClick = useCallback((tokenId: string) => {
-    if (!gameState) return;
-    if (!gameState.diceRolled) return;
-    if (!gameState.movablePieces.includes(tokenId)) return;
-    if (isProcessingRef.current) return;
+  const handleTokenClick = useCallback(
+    (tokenId: string) => {
+      if (!gameState) return;
+      if (!gameState.diceRolled) return;
+      if (!gameState.movablePieces.includes(tokenId)) return;
+      if (isProcessingRef.current || animLockRef.current) return;
 
-    const currentPlayer = getCurrentPlayer(gameState);
-    if (currentPlayer.type !== "human") return;
+      const currentPlayer = getCurrentPlayer(gameState);
+      if (currentPlayer.type !== "human") return;
 
-    audio.click();
-    setSelectedToken(tokenId);
+      audio.click();
+      setSelectedToken(tokenId);
 
-    setTimeout(() => {
-      setSelectedToken(null);
       const state = stateRef.current;
       if (!state) return;
       const result = applyMove(state, tokenId);
-      handleMoveResult(result);
-    }, 150);
-  }, [gameState, handleMoveResult]);
+
+      setSelectedToken(null);
+      animateAndApply(tokenId, result);
+    },
+    [gameState, animateAndApply]
+  );
 
   if (screen === "menu") {
     return <MenuScreen stats={stats} onStart={handleStart} />;
@@ -1228,54 +1469,76 @@ export function LudoGame() {
   const boardSize = 15 * cellSize;
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "linear-gradient(160deg, #0a0a1a 0%, #0d0720 50%, #0a0a1a 100%)",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      padding: "16px 8px",
-      gap: 12,
-    }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "linear-gradient(160deg, #fffde7 0%, #fff3e0 50%, #e3f2fd 100%)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "12px 8px",
+        gap: 10,
+      }}
+    >
       {/* Capture flash */}
       <AnimatePresence>
         {captureFlash && (
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: 0.3 }}
             exit={{ opacity: 0 }}
             style={{
-              position: "fixed", inset: 0, zIndex: 50, pointerEvents: "none",
-              background: `radial-gradient(circle, ${COLOR_PALETTE[captureFlash as PlayerColor].glow}, transparent 70%)`,
+              position: "fixed",
+              inset: 0,
+              zIndex: 50,
+              pointerEvents: "none",
+              background:
+                COLOR_PALETTE[captureFlash as PlayerColor].primary,
             }}
           />
         )}
       </AnimatePresence>
 
       {/* Header */}
-      <div style={{
-        width: "100%", maxWidth: boardSize + 40,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        gap: 8,
-      }}>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: boardSize + 40,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
         <motion.button
           onClick={() => setScreen("menu")}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.94 }}
           style={{
-            padding: "6px 14px", borderRadius: 8,
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "rgba(255,255,255,0.06)",
-            color: "rgba(255,255,255,0.7)", fontSize: 12, cursor: "pointer",
+            padding: "6px 14px",
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            background: "white",
+            color: "#666",
+            fontSize: 12,
+            cursor: "pointer",
+            fontWeight: 600,
           }}
         >
           ← Menu
         </motion.button>
-        <h1 style={{
-          color: "white", fontWeight: 900, fontSize: 20, letterSpacing: 2,
-          background: "linear-gradient(135deg, #ef4444, #eab308, #22c55e, #3b82f6)",
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-        }}>
+        <h1
+          style={{
+            fontWeight: 900,
+            fontSize: 22,
+            letterSpacing: 3,
+            background:
+              "linear-gradient(135deg, #D32F2F, #F9A825, #388E3C, #1565C0)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
           LUDO
         </h1>
         <div style={{ width: 70 }} />
@@ -1289,10 +1552,14 @@ export function LudoGame() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             style={{
-              padding: "6px 16px", borderRadius: 20,
-              background: "rgba(255,255,255,0.12)",
-              border: "1px solid rgba(255,255,255,0.15)",
-              color: "white", fontSize: 12, fontWeight: 600,
+              padding: "6px 18px",
+              borderRadius: 20,
+              background: "white",
+              border: "1px solid #e0e0e0",
+              color: "#333",
+              fontSize: 12,
+              fontWeight: 600,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
             }}
           >
             {statusMessage}
@@ -1301,22 +1568,26 @@ export function LudoGame() {
       </AnimatePresence>
 
       {/* Main layout */}
-      <div style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 12,
-        width: "100%",
-        maxWidth: boardSize + 260,
-      }}>
-        {/* Player panels — top row on desktop */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${gameState.numPlayers}, 1fr)`,
-          gap: 8,
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 10,
           width: "100%",
-          maxWidth: boardSize + 40,
-        }}>
+          maxWidth: boardSize + 260,
+        }}
+      >
+        {/* Player panels */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${gameState.numPlayers}, 1fr)`,
+            gap: 8,
+            width: "100%",
+            maxWidth: boardSize + 40,
+          }}
+        >
           {gameState.players.map((player, i) => (
             <PlayerPanel
               key={player.color}
@@ -1332,34 +1603,46 @@ export function LudoGame() {
         </div>
 
         {/* Board */}
-        <div style={{
-          position: "relative",
-          borderRadius: 16,
-          overflow: "hidden",
-          boxShadow: `0 0 0 2px rgba(255,255,255,0.06), 0 0 60px ${pal.glow}40, 0 8px 40px rgba(0,0,0,0.7)`,
-          border: `2px solid rgba(255,255,255,0.08)`,
-        }}>
+        <div
+          style={{
+            position: "relative",
+            borderRadius: 14,
+            overflow: "hidden",
+            boxShadow:
+              "0 4px 24px rgba(0,0,0,0.12), 0 0 0 2px rgba(0,0,0,0.06)",
+            border: "2px solid #d0d0d0",
+          }}
+        >
           <LudoBoard
             state={gameState}
             selectedToken={selectedToken}
             onTokenClick={handleTokenClick}
             cellSize={cellSize}
+            animatingToken={animatingToken}
+            animPos={animPos}
           />
         </div>
 
         {/* Dice + controls */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 16,
-          padding: "12px 20px", borderRadius: 16,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            padding: "12px 20px",
+            borderRadius: 16,
+            background: "white",
+            border: "1px solid #e0e0e0",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+          }}
+        >
           <Dice
             value={gameState.dice}
             rolling={diceRolling}
             canRoll={
               !gameState.diceRolled &&
               !diceRolling &&
+              !animLockRef.current &&
               currentPlayer.type === "human" &&
               gameState.phase === "playing"
             }
@@ -1367,27 +1650,41 @@ export function LudoGame() {
             playerColor={currentPlayer.color}
           />
           <div>
-            <div style={{
-              color: pal.primary, fontWeight: 700, fontSize: 13,
-              textShadow: `0 0 12px ${pal.glow}`,
-            }}>
+            <div
+              style={{
+                color: pal.primary,
+                fontWeight: 700,
+                fontSize: 14,
+              }}
+            >
               {currentPlayer.name}&apos;s Turn
               {currentPlayer.type === "ai" && " (AI)"}
             </div>
-            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginTop: 2 }}>
+            <div
+              style={{ color: "#999", fontSize: 11, marginTop: 2 }}
+            >
               {!gameState.diceRolled
-                ? currentPlayer.type === "human" ? "Click dice to roll" : "AI is thinking..."
+                ? currentPlayer.type === "human"
+                  ? "Tap dice to roll"
+                  : "AI is thinking..."
                 : gameState.movablePieces.length > 0
-                ? currentPlayer.type === "human" ? "Choose a token to move" : "AI is choosing..."
+                ? currentPlayer.type === "human"
+                  ? "Tap a token to move"
+                  : "AI is choosing..."
                 : "No moves available"}
             </div>
             {gameState.dice === 6 && gameState.diceRolled && (
               <motion.div
-                style={{ color: "#ffd700", fontSize: 11, fontWeight: 700, marginTop: 2 }}
-                animate={{ opacity: [1, 0.5, 1] }}
+                style={{
+                  color: "#F9A825",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  marginTop: 2,
+                }}
+                animate={{ opacity: [1, 0.4, 1] }}
                 transition={{ repeat: Infinity, duration: 0.8 }}
               >
-                ✨ Rolled a 6 — bonus turn!
+                ✨ Rolled 6 — bonus turn!
               </motion.div>
             )}
           </div>
@@ -1416,43 +1713,44 @@ export function LudoGame() {
 export function LudoMiniPreview() {
   return (
     <svg viewBox="0 0 100 100" width="100%" height="100%">
-      <rect x={0} y={0} width={100} height={100} fill="#0a0a1a" rx={4} />
+      <rect x={0} y={0} width={100} height={100} fill="#f5f0e8" rx={4} />
 
       {/* Yard quadrants */}
-      <rect x={2} y={2} width={38} height={38} fill="rgba(239,68,68,0.2)" rx={4} stroke="#ef4444" strokeWidth={0.8} strokeOpacity={0.5} />
-      <rect x={60} y={2} width={38} height={38} fill="rgba(34,197,94,0.2)" rx={4} stroke="#22c55e" strokeWidth={0.8} strokeOpacity={0.5} />
-      <rect x={60} y={60} width={38} height={38} fill="rgba(234,179,8,0.2)" rx={4} stroke="#eab308" strokeWidth={0.8} strokeOpacity={0.5} />
-      <rect x={2} y={60} width={38} height={38} fill="rgba(59,130,246,0.2)" rx={4} stroke="#3b82f6" strokeWidth={0.8} strokeOpacity={0.5} />
+      <rect x={2} y={2} width={38} height={38} fill="#D32F2F" rx={4} />
+      <rect x={60} y={2} width={38} height={38} fill="#388E3C" rx={4} />
+      <rect x={60} y={60} width={38} height={38} fill="#F9A825" rx={4} />
+      <rect x={2} y={60} width={38} height={38} fill="#1565C0" rx={4} />
+
+      {/* Inner white yards */}
+      <rect x={6} y={6} width={30} height={30} fill="white" rx={4} />
+      <rect x={64} y={6} width={30} height={30} fill="white" rx={4} />
+      <rect x={64} y={64} width={30} height={30} fill="white" rx={4} />
+      <rect x={6} y={64} width={30} height={30} fill="white" rx={4} />
 
       {/* Cross track */}
-      <rect x={42} y={2} width={16} height={96} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" strokeWidth={0.5} />
-      <rect x={2} y={42} width={96} height={16} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" strokeWidth={0.5} />
-
-      {/* Home stretch colors */}
-      <rect x={42} y={42} width={16} height={6} fill="rgba(239,68,68,0.5)" />   {/* red */}
-      <rect x={52} y={42} width={6} height={16} fill="rgba(34,197,94,0.5)" />   {/* green */}
-      <rect x={42} y={52} width={16} height={6} fill="rgba(234,179,8,0.5)" />  {/* yellow */}
-      <rect x={42} y={42} width={6} height={16} fill="rgba(59,130,246,0.5)" /> {/* blue */}
+      <rect x={42} y={2} width={16} height={96} fill="white" stroke="#ddd" strokeWidth={0.5} />
+      <rect x={2} y={42} width={96} height={16} fill="white" stroke="#ddd" strokeWidth={0.5} />
 
       {/* Center triangles */}
-      <polygon points="50,50 42,42 58,42" fill="#ef444466" />
-      <polygon points="50,50 58,42 58,58" fill="#22c55e66" />
-      <polygon points="50,50 58,58 42,58" fill="#eab30866" />
-      <polygon points="50,50 42,58 42,42" fill="#3b82f666" />
+      <polygon points="50,50 42,42 58,42" fill="#D32F2F" />
+      <polygon points="50,50 58,42 58,58" fill="#388E3C" />
+      <polygon points="50,50 58,58 42,58" fill="#F9A825" />
+      <polygon points="50,50 42,58 42,42" fill="#1565C0" />
 
-      {/* Tokens */}
-      <circle cx={14} cy={14} r={5} fill="#ef4444" stroke="#991b1b" strokeWidth={1} />
-      <circle cx={26} cy={14} r={5} fill="#ef4444" stroke="#991b1b" strokeWidth={1} opacity={0.6} />
-      <circle cx={78} cy={22} r={5} fill="#22c55e" stroke="#15803d" strokeWidth={1} />
-      <circle cx={78} cy={78} r={5} fill="#eab308" stroke="#a16207" strokeWidth={1} />
-      <circle cx={22} cy={78} r={5} fill="#3b82f6" stroke="#1d4ed8" strokeWidth={1} />
+      {/* Tokens in yard */}
+      <circle cx={14} cy={14} r={5} fill="#D32F2F" stroke="#B71C1C" strokeWidth={1} />
+      <circle cx={28} cy={14} r={5} fill="#D32F2F" stroke="#B71C1C" strokeWidth={1} opacity={0.6} />
+      <circle cx={78} cy={14} r={5} fill="#388E3C" stroke="#1B5E20" strokeWidth={1} />
+      <circle cx={78} cy={78} r={5} fill="#F9A825" stroke="#F57F17" strokeWidth={1} />
+      <circle cx={14} cy={78} r={5} fill="#1565C0" stroke="#0D47A1" strokeWidth={1} />
 
-      {/* Token on track */}
-      <circle cx={50} cy={30} r={4} fill="#ef4444" stroke="white" strokeWidth={0.8}
-        style={{ filter: "drop-shadow(0 0 4px #ef444488)" }} />
+      {/* Pin token on track */}
+      <path d="M 50 22 C 47 18 45 14 45 12 A 5 5 0 1 1 55 12 C 55 14 53 18 50 22 Z"
+        fill="#D32F2F" stroke="white" strokeWidth={0.8} />
+      <circle cx={50} cy={12} r={2} fill="white" />
 
-      {/* Star safe cell */}
-      <text x={50} y={73} textAnchor="middle" fontSize={8} fill="rgba(255,215,0,0.7)">★</text>
+      {/* Star */}
+      <text x={50} y={72} textAnchor="middle" fontSize={8} fill="#F9A825">★</text>
     </svg>
   );
 }

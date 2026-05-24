@@ -25,32 +25,71 @@ export class LudoAudio {
     this.enabled = enabled;
   }
 
-  /** Dice shake — rattling noise */
+  /**
+   * Dice rolling on wooden board — multiple bouncing impacts with
+   * low-pass-filtered noise bursts to simulate wood-on-wood resonance.
+   */
   diceShake(): void {
     if (!this.enabled) return;
     const ctx = this.getCtx();
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    for (let i = 0; i < 6; i++) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const buf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
+    // 8 bouncing impacts, closer together as dice settles
+    const impacts = [0, 0.07, 0.13, 0.18, 0.23, 0.27, 0.30, 0.33];
+
+    impacts.forEach((t, i) => {
+      const dur = 0.04 + (1 - i / impacts.length) * 0.04; // shorter as it settles
+      const vol = 0.22 * (1 - i * 0.1); // quieter each bounce
+
+      // Wood impact: band-pass filtered noise
+      const bufLen = Math.floor(ctx.sampleRate * dur);
+      const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
       const data = buf.getChannelData(0);
-      for (let j = 0; j < data.length; j++) {
-        data[j] = (Math.random() * 2 - 1) * (1 - j / data.length);
+      for (let j = 0; j < bufLen; j++) {
+        data[j] = (Math.random() * 2 - 1) * Math.exp(-j / (bufLen * 0.25));
       }
       const src = ctx.createBufferSource();
       src.buffer = buf;
-      src.connect(gain);
+
+      // Band-pass filter for wooden resonance
+      const bpf = ctx.createBiquadFilter();
+      bpf.type = "bandpass";
+      bpf.frequency.setValueAtTime(800 + i * 120, now + t);
+      bpf.Q.setValueAtTime(2.5, now + t);
+
+      // Low-pass to remove harshness
+      const lpf = ctx.createBiquadFilter();
+      lpf.type = "lowpass";
+      lpf.frequency.setValueAtTime(2200 - i * 100, now + t);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(vol, now + t);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + t + dur);
+
+      src.connect(bpf);
+      bpf.connect(lpf);
+      lpf.connect(gain);
       gain.connect(ctx.destination);
-      gain.gain.setValueAtTime(0.08, now + i * 0.06);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.04);
-      src.start(now + i * 0.06);
-    }
+      src.start(now + t);
+
+      // Subtle wooden resonance tone under each impact
+      const osc = ctx.createOscillator();
+      const oGain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(180 + Math.random() * 60, now + t);
+      oGain.gain.setValueAtTime(vol * 0.3, now + t);
+      oGain.gain.exponentialRampToValueAtTime(0.001, now + t + dur * 1.5);
+      osc.connect(oGain);
+      oGain.connect(ctx.destination);
+      osc.start(now + t);
+      osc.stop(now + t + dur * 1.5);
+    });
   }
 
-  /** Dice land — satisfying thud + number reveal tone */
+  /**
+   * Dice lands on wooden board — solid thud with board resonance.
+   */
   diceLand(value: number): void {
     if (!this.enabled) return;
     const ctx = this.getCtx();
@@ -58,31 +97,53 @@ export class LudoAudio {
 
     const now = ctx.currentTime;
 
-    // Thud
-    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.15, ctx.sampleRate);
+    // Heavy wood thud — filtered noise burst
+    const bufLen = Math.floor(ctx.sampleRate * 0.18);
+    const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
     const data = buf.getChannelData(0);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.04));
+    for (let i = 0; i < bufLen; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.035));
     }
     const src = ctx.createBufferSource();
     src.buffer = buf;
+
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.setValueAtTime(1400, now);
+    lpf.Q.setValueAtTime(1.8, now);
+
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.25, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-    src.connect(gain);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+    src.connect(lpf);
+    lpf.connect(gain);
     gain.connect(ctx.destination);
     src.start(now);
 
-    // Reveal tone — pitch matches value
+    // Board resonance — low warm tone
+    const res = ctx.createOscillator();
+    const rGain = ctx.createGain();
+    res.type = "sine";
+    res.frequency.setValueAtTime(120, now);
+    res.frequency.exponentialRampToValueAtTime(80, now + 0.2);
+    rGain.gain.setValueAtTime(0.12, now);
+    rGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    res.connect(rGain);
+    rGain.connect(ctx.destination);
+    res.start(now);
+    res.stop(now + 0.22);
+
+    // Subtle reveal tone — pitch rises with value
     const osc = ctx.createOscillator();
     const oGain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(200 + value * 60, now + 0.12);
-    oGain.gain.setValueAtTime(0.12, now + 0.12);
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(200 + value * 50, now + 0.14);
+    oGain.gain.setValueAtTime(0.08, now + 0.14);
     oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
     osc.connect(oGain);
     oGain.connect(ctx.destination);
-    osc.start(now + 0.12);
+    osc.start(now + 0.14);
     osc.stop(now + 0.35);
   }
 

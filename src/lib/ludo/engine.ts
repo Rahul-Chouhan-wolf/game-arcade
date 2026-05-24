@@ -70,6 +70,8 @@ export interface MoveResult {
   enteredBoard: boolean;
   enteredHome: boolean;
   finished: boolean;
+  /** Intermediate positions for step-by-step animation */
+  movePath: Array<[number, number]>;
 }
 
 // ─────────────────────────────────────────
@@ -290,6 +292,50 @@ export const YARD_COORDS: Record<PlayerColor, Array<[number, number]>> = {
 };
 
 // ─────────────────────────────────────────
+// Path calculation (for step-by-step animation)
+// ─────────────────────────────────────────
+
+/**
+ * Returns the sequence of (row,col) waypoints for a token move,
+ * one per step. Used by the UI for step-by-step animation.
+ */
+export function getMovePath(
+  token: Token,
+  dice: number,
+  color: PlayerColor
+): Array<[number, number]> {
+  const path: Array<[number, number]> = [];
+
+  if (token.state === "yard" && dice === 6) {
+    // Entering: just the entry cell
+    const entryPos = ENTRY_CELLS[color];
+    path.push(MAIN_TRACK_COORDS[entryPos]);
+    return path;
+  }
+
+  if (token.state === "finished") return path;
+
+  for (let step = 1; step <= dice; step++) {
+    const progress = token.progress + step;
+    if (progress >= FINISH_PROGRESS) {
+      path.push([7, 7]); // center (finished)
+      break;
+    }
+    if (progress >= HOME_STRETCH_START_PROGRESS) {
+      const hsIdx = progress - HOME_STRETCH_START_PROGRESS;
+      const coord = HOME_STRETCH_COORDS[color][hsIdx];
+      if (coord) path.push(coord);
+    } else {
+      const trackPos = progressToTrackPos(color, progress);
+      const coord = MAIN_TRACK_COORDS[trackPos];
+      if (coord) path.push(coord);
+    }
+  }
+
+  return path;
+}
+
+// ─────────────────────────────────────────
 // Move logic
 // ─────────────────────────────────────────
 
@@ -358,8 +404,13 @@ export function applyMove(
   const currentPlayer = newState.players[newState.currentPlayerIndex];
   const token = currentPlayer.tokens.find((t) => t.id === tokenId);
 
+  // Compute animation path BEFORE mutating state
+  const movePath = token
+    ? getMovePath(token, newState.dice, currentPlayer.color)
+    : [];
+
   if (!token) {
-    return { newState, captured: false, enteredBoard: false, enteredHome: false, finished: false };
+    return { newState, captured: false, enteredBoard: false, enteredHome: false, finished: false, movePath: [] };
   }
 
   let captured = false;
@@ -375,15 +426,22 @@ export function applyMove(
     token.trackPos = ENTRY_CELLS[token.color];
     enteredBoard = true;
 
-    // Check for capture at entry cell
-    if (!SAFE_CELLS.has(token.trackPos)) {
-      const { tokensThere } = canCapture(newState, token.color, token.trackPos);
-      if (tokensThere.length > 0) {
-        for (const enemy of tokensThere) {
-          sendTokenToYard(newState, enemy);
-          captured = true;
-          capturedToken = enemy;
+    // Check for capture at entry cell — always allowed when entering from yard
+    // (even on safe/star cells, entering from yard can capture)
+    const tokensAtEntry: Token[] = [];
+    for (const player of newState.players) {
+      if (player.color === token.color) continue;
+      for (const t of player.tokens) {
+        if (t.state === "track" && t.trackPos === token.trackPos) {
+          tokensAtEntry.push(t);
         }
+      }
+    }
+    if (tokensAtEntry.length > 0) {
+      for (const enemy of tokensAtEntry) {
+        sendTokenToYard(newState, enemy);
+        captured = true;
+        capturedToken = enemy;
       }
     }
   } else if (token.state === "track" || token.state === "home") {
@@ -465,7 +523,7 @@ export function applyMove(
   newState.diceRolled = false;
   newState.movablePieces = [];
 
-  return { newState, captured, capturedToken, enteredBoard, enteredHome, finished };
+  return { newState, captured, capturedToken, enteredBoard, enteredHome, finished, movePath };
 }
 
 function sendTokenToYard(state: LudoState, token: Token): void {
