@@ -30,6 +30,7 @@ interface Game {
   neonDriftPreview?:  boolean
   cryptogramPreview?: boolean
   tictactoePreview?:  boolean
+  ludoPreview?:       boolean
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -134,6 +135,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     tictactoePreview: true,
+  },
+  {
+    id: "ludo",
+    name: "Ludo",
+    tagline: "Race your tokens home — roll, capture, win",
+    description: "Classic Ludo with 2–4 players, authentic rules, AI opponents (Easy/Medium/Hard), and premium animated visuals.",
+    tags: ["Board", "2–4 Players", "Strategy"],
+    accent: "#f59e0b",
+    href: "/ludo",
+    isLive: true,
+    isNew: true,
+    ludoPreview: true,
   },
 ]
 
@@ -570,6 +583,46 @@ function TicTacToeMiniPreview() {
   )
 }
 
+// ── Ludo mini preview ─────────────────────────────────────────────────────────
+
+function LudoMiniPreview() {
+  return (
+    <svg viewBox="0 0 88 72" width={88} height={72}>
+      <rect x={0} y={0} width={88} height={72} rx={6} fill="#0a0a1a"/>
+      {/* Yard quadrants */}
+      <rect x={2}  y={2}  width={30} height={30} fill="rgba(239,68,68,0.2)"  rx={3} stroke="#ef4444" strokeWidth={0.8} strokeOpacity={0.5}/>
+      <rect x={56} y={2}  width={30} height={30} fill="rgba(34,197,94,0.2)"  rx={3} stroke="#22c55e" strokeWidth={0.8} strokeOpacity={0.5}/>
+      <rect x={56} y={40} width={30} height={30} fill="rgba(234,179,8,0.2)"  rx={3} stroke="#eab308" strokeWidth={0.8} strokeOpacity={0.5}/>
+      <rect x={2}  y={40} width={30} height={30} fill="rgba(59,130,246,0.2)" rx={3} stroke="#3b82f6" strokeWidth={0.8} strokeOpacity={0.5}/>
+      {/* Cross track */}
+      <rect x={34} y={2}  width={20} height={68} fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.07)" strokeWidth={0.5}/>
+      <rect x={2}  y={30} width={84} height={12} fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.07)" strokeWidth={0.5}/>
+      {/* Home stretch colors */}
+      <rect x={34} y={2}  width={20} height={28} fill="rgba(34,197,94,0.25)"/>
+      <rect x={34} y={42} width={20} height={28} fill="rgba(234,179,8,0.25)"/>
+      <rect x={2}  y={30} width={32} height={12} fill="rgba(59,130,246,0.25)"/>
+      <rect x={54} y={30} width={32} height={12} fill="rgba(239,68,68,0.25)"/>
+      {/* Center */}
+      <polygon points="44,36 34,30 54,30" fill="#ef444455"/>
+      <polygon points="44,36 54,30 54,42" fill="#22c55e55"/>
+      <polygon points="44,36 54,42 34,42" fill="#eab30855"/>
+      <polygon points="44,36 34,42 34,30" fill="#3b82f655"/>
+      {/* Tokens */}
+      <motion.circle cx={12} cy={12} r={5} fill="#ef4444" stroke="#991b1b" strokeWidth={1}
+        animate={{ scale: [1, 1.15, 1] }} transition={{ repeat: Infinity, duration: 2, delay: 0 }}/>
+      <circle cx={22} cy={12} r={5} fill="#ef4444" stroke="#991b1b" strokeWidth={1} opacity={0.55}/>
+      <circle cx={70} cy={12} r={5} fill="#22c55e" stroke="#15803d" strokeWidth={1}/>
+      <circle cx={70} cy={58} r={5} fill="#eab308" stroke="#a16207" strokeWidth={1}/>
+      <circle cx={12} cy={58} r={5} fill="#3b82f6" stroke="#1d4ed8" strokeWidth={1}/>
+      {/* Token on track */}
+      <motion.circle cx={44} cy={20} r={4.5} fill="#ef4444" stroke="white" strokeWidth={1}
+        animate={{ cy: [20, 14, 20] }} transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }}/>
+      {/* Star */}
+      <text x={44} y={57} textAnchor="middle" fontSize={8} fill="rgba(255,215,0,0.65)">★</text>
+    </svg>
+  )
+}
+
 // ── Preview dispatcher ────────────────────────────────────────────────────────
 
 function GamePreview({ game }: { game: Game }) {
@@ -577,6 +630,7 @@ function GamePreview({ game }: { game: Game }) {
   if (game.neonDriftPreview)  return <NeonDriftMiniPreview/>
   if (game.orbitalPreview)    return <OrbitalMiniPreview/>
   if (game.tictactoePreview)  return <TicTacToeMiniPreview/>
+  if (game.ludoPreview)       return <LudoMiniPreview/>
   if (game.hexPreview)        return <HexMiniBoard/>
   if (game.goPreview)         return <GoMiniBoard/>
   if (game.dotPreview)        return <BoxMiniBoard/>
