@@ -132,7 +132,7 @@ function TokenPiece({ token, cs, movable, selected, onClick, overridePos, hopKey
 }
 
 // ─────────────────────────────────────────
-// Dice dots layout
+// 3D Dice — CSS cube with all 6 faces
 // ─────────────────────────────────────────
 
 const DOTS: Record<number, Array<[number, number]>> = {
@@ -143,6 +143,150 @@ const DOTS: Record<number, Array<[number, number]>> = {
   5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]],
   6: [[30, 25], [70, 25], [30, 50], [70, 50], [30, 75], [70, 75]],
 };
+
+// Rotation needed to show each value on top
+const FACE_ROTATIONS: Record<number, { rx: number; ry: number }> = {
+  1: { rx: 0, ry: 0 },
+  2: { rx: -90, ry: 0 },
+  3: { rx: 0, ry: 90 },
+  4: { rx: 0, ry: -90 },
+  5: { rx: 90, ry: 0 },
+  6: { rx: 180, ry: 0 },
+};
+
+interface Dice3DProps {
+  value: number;
+  rolling: boolean;
+  canRoll: boolean;
+  size: number;
+  accentColor: string;
+  onClick: () => void;
+  diceRolled: boolean;
+}
+
+function Dice3D({ value, rolling, canRoll, size, accentColor, onClick, diceRolled }: Dice3DProps) {
+  const half = size / 2;
+  const { rx, ry } = FACE_ROTATIONS[value] || FACE_ROTATIONS[1];
+  const dotR = 10;
+
+  // Each face has a slightly different white shade for 3D depth
+  const faceStyle = (transform: string, shade: string): React.CSSProperties => ({
+    position: "absolute",
+    width: size,
+    height: size,
+    borderRadius: size * 0.16,
+    background: shade,
+    border: "1.5px solid #d4d0c8",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backfaceVisibility: "hidden",
+    transform,
+  });
+
+  return (
+    <div style={{ perspective: size * 4, cursor: canRoll ? "pointer" : "default" }}
+      onClick={canRoll ? onClick : undefined}
+    >
+      {/* Animated shadow under dice */}
+      <motion.div
+        animate={rolling
+          ? { scale: [1, 0.6, 1.1, 0.7, 1], opacity: [0.25, 0.1, 0.3, 0.12, 0.22] }
+          : { scale: 1, opacity: 0.22 }
+        }
+        transition={rolling ? { duration: 0.8, ease: "easeInOut" } : { duration: 0.3 }}
+        style={{
+          position: "absolute",
+          bottom: -4,
+          left: "50%",
+          width: size * 0.7,
+          height: size * 0.18,
+          borderRadius: "50%",
+          background: "rgba(0,0,0,0.35)",
+          transform: "translateX(-50%)",
+          filter: "blur(3px)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* 3D cube wrapper */}
+      <motion.div
+        animate={rolling
+          ? {
+              rotateX: [0, 320, 640, 720 + rx],
+              rotateY: [0, 280, 480, 720 + ry],
+              rotateZ: [0, -120, 60, 0],
+              y: [0, -size * 1.2, -size * 0.4, -size * 0.8, 0],
+              scale: [1, 1.05, 0.95, 1.02, 1],
+            }
+          : { rotateX: rx, rotateY: ry, rotateZ: 0, y: 0, scale: 1 }
+        }
+        transition={rolling
+          ? { duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94], times: undefined }
+          : { duration: 0.35, ease: "easeOut" }
+        }
+        whileHover={canRoll ? { scale: 1.1, y: -4 } : {}}
+        whileTap={canRoll ? { scale: 0.9 } : {}}
+        style={{
+          width: size,
+          height: size,
+          position: "relative",
+          transformStyle: "preserve-3d",
+          opacity: diceRolled && !rolling ? 0.9 : 1,
+        }}
+      >
+        {/* Face 1 — front */}
+        <div style={faceStyle(`translateZ(${half}px)`, "#fffef8")}>
+          <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
+            {DOTS[1].map(([cx, cy], i) => (
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+            ))}
+          </svg>
+        </div>
+        {/* Face 6 — back */}
+        <div style={faceStyle(`rotateY(180deg) translateZ(${half}px)`, "#f8f6ee")}>
+          <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
+            {DOTS[6].map(([cx, cy], i) => (
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+            ))}
+          </svg>
+        </div>
+        {/* Face 2 — bottom (rotateX -90) */}
+        <div style={faceStyle(`rotateX(-90deg) translateZ(${half}px)`, "#faf8f0")}>
+          <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
+            {DOTS[2].map(([cx, cy], i) => (
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+            ))}
+          </svg>
+        </div>
+        {/* Face 5 — top (rotateX 90) */}
+        <div style={faceStyle(`rotateX(90deg) translateZ(${half}px)`, "#f9f7ef")}>
+          <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
+            {DOTS[5].map(([cx, cy], i) => (
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+            ))}
+          </svg>
+        </div>
+        {/* Face 3 — right (rotateY 90) */}
+        <div style={faceStyle(`rotateY(90deg) translateZ(${half}px)`, "#fcfaf2")}>
+          <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
+            {DOTS[3].map(([cx, cy], i) => (
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+            ))}
+          </svg>
+        </div>
+        {/* Face 4 — left (rotateY -90) */}
+        <div style={faceStyle(`rotateY(-90deg) translateZ(${half}px)`, "#fdfbf3")}>
+          <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
+            {DOTS[4].map(([cx, cy], i) => (
+              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#222" />
+            ))}
+          </svg>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────
 // Board SVG
@@ -780,40 +924,15 @@ export function LudoGame() {
               display: "flex", flexDirection: "column", alignItems: "center",
               pointerEvents: "auto",
             }}>
-              <motion.button
-                onClick={canRoll ? handleRoll : undefined}
-                disabled={!canRoll}
-                whileHover={canRoll ? { scale: 1.12 } : {}}
-                whileTap={canRoll ? { scale: 0.88 } : {}}
-                animate={
-                  rolling
-                    ? { rotateX: [0, 360, 720], rotateY: [0, 180, 360], rotateZ: [0, 120, 0] }
-                    : { rotateX: 0, rotateY: 0, rotateZ: 0 }
-                }
-                transition={rolling ? { duration: 0.6, ease: "easeInOut" } : { duration: 0.3 }}
-                style={{
-                  width: Math.max(48, cs * 1.6),
-                  height: Math.max(48, cs * 1.6),
-                  borderRadius: Math.max(8, cs * 0.3),
-                  background: gs.diceRolled ? "white" : pal.bg,
-                  border: `3px solid ${pal.bg}`,
-                  boxShadow: canRoll
-                    ? `0 4px 24px ${pal.bg}55, 0 2px 8px rgba(0,0,0,0.2)`
-                    : "0 2px 8px rgba(0,0,0,0.15)",
-                  cursor: canRoll ? "pointer" : "default",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  outline: "none", perspective: 600,
-                  opacity: gs.diceRolled && !rolling ? 0.85 : 1,
-                  pointerEvents: gs.diceRolled && !rolling ? "none" : "auto",
-                }}
-              >
-                <svg width="80%" height="80%" viewBox="0 0 100 100">
-                  {(DOTS[diceDisplay] || DOTS[1]).map(([cx, cy], i) => (
-                    <circle key={i} cx={cx} cy={cy} r={10}
-                      fill={gs.diceRolled ? "#333" : "white"} />
-                  ))}
-                </svg>
-              </motion.button>
+              <Dice3D
+                value={diceDisplay}
+                rolling={rolling}
+                canRoll={canRoll}
+                size={Math.max(44, cs * 1.5)}
+                accentColor={pal.bg}
+                onClick={handleRoll}
+                diceRolled={gs.diceRolled}
+              />
 
               {/* Turn label under dice */}
               {!rolling && !gs.diceRolled && cp.type === "human" && (
@@ -821,7 +940,7 @@ export function LudoGame() {
                   animate={{ opacity: [1, 0.4, 1] }}
                   transition={{ repeat: Infinity, duration: 1.2 }}
                   style={{
-                    textAlign: "center", marginTop: 4,
+                    textAlign: "center", marginTop: 6,
                     fontSize: Math.max(9, cs * 0.28), fontWeight: 700,
                     color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.4)",
                     pointerEvents: "none",
@@ -836,7 +955,7 @@ export function LudoGame() {
                   animate={{ opacity: [1, 0.3, 1], scale: [1, 1.1, 1] }}
                   transition={{ repeat: Infinity, duration: 0.7 }}
                   style={{
-                    textAlign: "center", marginTop: 2,
+                    textAlign: "center", marginTop: 3,
                     fontSize: Math.max(9, cs * 0.26), fontWeight: 800,
                     color: "#F9A825", textShadow: "0 1px 3px rgba(0,0,0,0.4)",
                     pointerEvents: "none",
