@@ -416,15 +416,45 @@ function LudoBoard({ state, sel, onTok, cs, animTok, animPos, hopKey }: BoardPro
         ))
       )}
 
-      {/* Center home triangles */}
+      {/* Center home — large 3×3 square with colored triangles */}
       {(() => {
-        const cx = 7 * cs + cs / 2, cy = 7 * cs + cs / 2, h = cs * 1.5;
-        const corners: Array<[number, number]> = [[cx, cy - h], [cx + h, cy], [cx, cy + h], [cx - h, cy]];
-        return (["red", "green", "yellow", "blue"] as PlayerColor[]).map((color, i) => (
-          <polygon key={color}
-            points={`${cx},${cy} ${corners[i][0]},${corners[i][1]} ${corners[(i + 1) % 4][0]},${corners[(i + 1) % 4][1]}`}
-            fill={C[color].bg} stroke="white" strokeWidth={1.5} />
-        ));
+        // The center area spans grid cells 6–8 (3 cells wide)
+        const cx0 = 6 * cs, cy0 = 6 * cs, side = 3 * cs;
+        const mx = cx0 + side / 2, my = cy0 + side / 2; // center point
+
+        return (
+          <g>
+            {/* White background with border */}
+            <rect x={cx0} y={cy0} width={side} height={side}
+              fill="white" stroke="#c0c0c0" strokeWidth={1} />
+
+            {/* 4 colored triangles — each pointing inward from an edge */}
+            {/* Red (top) — top-left to top-right to center */}
+            <polygon
+              points={`${cx0},${cy0} ${cx0 + side},${cy0} ${mx},${my}`}
+              fill={C.red.bg} stroke="white" strokeWidth={2}
+            />
+            {/* Green (right) — top-right to bottom-right to center */}
+            <polygon
+              points={`${cx0 + side},${cy0} ${cx0 + side},${cy0 + side} ${mx},${my}`}
+              fill={C.green.bg} stroke="white" strokeWidth={2}
+            />
+            {/* Yellow (bottom) — bottom-right to bottom-left to center */}
+            <polygon
+              points={`${cx0 + side},${cy0 + side} ${cx0},${cy0 + side} ${mx},${my}`}
+              fill={C.yellow.bg} stroke="white" strokeWidth={2}
+            />
+            {/* Blue (left) — bottom-left to top-left to center */}
+            <polygon
+              points={`${cx0},${cy0 + side} ${cx0},${cy0} ${mx},${my}`}
+              fill={C.blue.bg} stroke="white" strokeWidth={2}
+            />
+
+            {/* Outer border for prominence */}
+            <rect x={cx0} y={cy0} width={side} height={side}
+              fill="none" stroke="#bbb" strokeWidth={1.5} />
+          </g>
+        );
       })()}
 
       {/* Active player yard glow */}
@@ -705,19 +735,34 @@ export function LudoGame() {
       flash(`${result.capturedToken.color.toUpperCase()} captured!`, 2200);
     }
 
-    setGs(result.newState);
+    // Brief pause so the dice result stays visible before turn switches
+    const commitState = () => {
+      setGs(result.newState);
 
-    // Check game end
-    if (result.newState.phase === "gameover") {
-      audio.victory();
-      const hp = result.newState.players.find((p) => p.type === "human");
-      const won = hp ? result.newState.finishOrder[0] === hp.color : false;
-      const ns = updateStats(stats, won, gameCaptures + (result.captured ? 1 : 0));
-      setStats(ns);
-      saveStats(ns);
+      // Check game end
+      if (result.newState.phase === "gameover") {
+        audio.victory();
+        const hp = result.newState.players.find((p) => p.type === "human");
+        const won = hp ? result.newState.finishOrder[0] === hp.color : false;
+        const ns = updateStats(stats, won, gameCaptures + (result.captured ? 1 : 0));
+        setStats(ns);
+        saveStats(ns);
+      }
+
+      cb?.();
+    };
+
+    // If the next state keeps the same player (rolled 6), commit immediately
+    // Otherwise delay so the rolled value stays visible
+    const samePlayer =
+      result.newState.currentPlayerIndex ===
+      (gsRef.current?.currentPlayerIndex ?? -1);
+
+    if (samePlayer) {
+      commitState();
+    } else {
+      setTimeout(commitState, 1000);
     }
-
-    cb?.();
   }
 
   // ── AI turn ───
@@ -752,6 +797,7 @@ export function LudoGame() {
           return n;
         });
 
+        // Show dice result for 1.2s before AI acts
         setTimeout(() => {
           const us = gsRef.current;
           if (!us) { processing.current = false; return; }
@@ -764,7 +810,7 @@ export function LudoGame() {
           if (!tid) { processing.current = false; return; }
           const res = applyMove(us, tid);
           animateAndApply(tid, res, () => { processing.current = false; });
-        }, 450);
+        }, 1200);
       }, 650);
     }, 500);
   }, [animateAndApply]);
@@ -818,14 +864,14 @@ export function LudoGame() {
     }, 650);
   }, [gs, rolling]);
 
-  // Auto-skip when human has no moves
+  // Auto-skip when human has no moves — wait so dice result stays visible
   useEffect(() => {
     if (!gs || !gs.diceRolled || gs.movablePieces.length > 0 || rolling || animLock.current) return;
     if (getCurrentPlayer(gs).type !== "human") return;
     const t = setTimeout(() => {
       flash("No moves — skipping", 1200);
       setGs((p) => p ? handleNoMoves(p) : p);
-    }, 1000);
+    }, 1500);
     return () => clearTimeout(t);
   }, [gs, rolling, flash]);
 
