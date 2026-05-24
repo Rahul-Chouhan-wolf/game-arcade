@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import {
   Player, Cell, Board, Difficulty,
@@ -47,13 +47,85 @@ const DIFFICULTY_LABELS: Record<Difficulty, { label: string; desc: string; color
   impossible: { label: "Impossible", desc: "Never loses",      color: "#ef4444" },
 }
 
+// ── Theme system ──────────────────────────────────────────────────────────────
+
+export interface ThemeConfig {
+  id:          string
+  name:        string
+  xColor:      string
+  oColor:      string
+  winColor:    string
+  gridColor:   string
+  boardBg:     string
+  boardBorder: string
+  pageBg:      string
+  blobX:       string   // ambient left blob colour
+  blobO:       string   // ambient right blob colour
+}
+
+export const THEMES: ThemeConfig[] = [
+  {
+    id: "neon", name: "Neon",
+    xColor: "#ff2d87", oColor: "#00d8ff", winColor: "#ffd700",
+    gridColor:   "rgba(0,216,255,0.55)",
+    boardBg:     "linear-gradient(145deg, rgba(8,4,36,0.97), rgba(4,2,22,0.99))",
+    boardBorder: "rgba(0,216,255,0.38)",
+    pageBg:      "linear-gradient(160deg, #030018 0%, #050024 50%, #030018 100%)",
+    blobX: "#ff2d8712", blobO: "#00d8ff10",
+  },
+  {
+    id: "lava", name: "Lava",
+    xColor: "#ff4500", oColor: "#ff8c00", winColor: "#ffe066",
+    gridColor:   "rgba(255,140,0,0.52)",
+    boardBg:     "linear-gradient(145deg, rgba(28,6,2,0.97), rgba(18,3,1,0.99))",
+    boardBorder: "rgba(255,69,0,0.42)",
+    pageBg:      "linear-gradient(160deg, #1a0200 0%, #200400 50%, #1a0200 100%)",
+    blobX: "#ff450012", blobO: "#ff8c0010",
+  },
+  {
+    id: "matrix", name: "Matrix",
+    xColor: "#00ff41", oColor: "#39ff14", winColor: "#ffffff",
+    gridColor:   "rgba(0,255,65,0.45)",
+    boardBg:     "linear-gradient(145deg, rgba(0,12,4,0.97), rgba(0,8,2,0.99))",
+    boardBorder: "rgba(0,255,65,0.38)",
+    pageBg:      "linear-gradient(160deg, #000a02 0%, #000f03 50%, #000a02 100%)",
+    blobX: "#00ff4112", blobO: "#39ff1410",
+  },
+  {
+    id: "royal", name: "Royal",
+    xColor: "#c77dff", oColor: "#00b4d8", winColor: "#ffd700",
+    gridColor:   "rgba(199,125,255,0.50)",
+    boardBg:     "linear-gradient(145deg, rgba(12,4,28,0.97), rgba(6,2,18,0.99))",
+    boardBorder: "rgba(199,125,255,0.40)",
+    pageBg:      "linear-gradient(160deg, #08001a 0%, #0c0022 50%, #08001a 100%)",
+    blobX: "#c77dff12", blobO: "#00b4d810",
+  },
+  {
+    id: "ice", name: "Ice",
+    xColor: "#e0f4ff", oColor: "#60b4ff", winColor: "#ffd700",
+    gridColor:   "rgba(96,180,255,0.48)",
+    boardBg:     "linear-gradient(145deg, rgba(4,8,22,0.97), rgba(2,5,16,0.99))",
+    boardBorder: "rgba(96,180,255,0.38)",
+    pageBg:      "linear-gradient(160deg, #020810 0%, #030d1c 50%, #020810 100%)",
+    blobX: "#e0f4ff10", blobO: "#60b4ff10",
+  },
+]
+
+const THEME_STORAGE_KEY = "ttt-theme-id"
+
+interface ThemeContextValue { theme: ThemeConfig }
+const ThemeContext = createContext<ThemeContextValue>({ theme: THEMES[0] })
+const useTheme = () => useContext(ThemeContext)
+
 // ── SVG Symbol components ─────────────────────────────────────────────────────
 
 function XSymbol({
-  size = 80, color = X_COLOR, ghost = false, animate: anim = true,
+  size = 80, color, ghost = false, animate: anim = true,
 }: {
   size?: number; color?: string; ghost?: boolean; animate?: boolean
 }) {
+  const { theme } = useTheme()
+  const c   = color ?? theme.xColor
   const pad = 20
   const sw  = 9
   return (
@@ -72,7 +144,7 @@ function XSymbol({
       )}
       <motion.line
         x1={pad} y1={pad} x2={100 - pad} y2={100 - pad}
-        stroke={color} strokeWidth={sw} strokeLinecap="round"
+        stroke={c} strokeWidth={sw} strokeLinecap="round"
         filter={ghost ? undefined : `url(#xglow-${size})`}
         initial={{ pathLength: anim ? 0 : 1 }}
         animate={{ pathLength: 1 }}
@@ -80,7 +152,7 @@ function XSymbol({
       />
       <motion.line
         x1={100 - pad} y1={pad} x2={pad} y2={100 - pad}
-        stroke={color} strokeWidth={sw} strokeLinecap="round"
+        stroke={c} strokeWidth={sw} strokeLinecap="round"
         filter={ghost ? undefined : `url(#xglow-${size})`}
         initial={{ pathLength: anim ? 0 : 1 }}
         animate={{ pathLength: 1 }}
@@ -91,10 +163,12 @@ function XSymbol({
 }
 
 function OSymbol({
-  size = 80, color = O_COLOR, ghost = false, animate: anim = true,
+  size = 80, color, ghost = false, animate: anim = true,
 }: {
   size?: number; color?: string; ghost?: boolean; animate?: boolean
 }) {
+  const { theme } = useTheme()
+  const c = color ?? theme.oColor
   return (
     <svg
       viewBox="0 0 100 100"
@@ -111,7 +185,7 @@ function OSymbol({
       )}
       <motion.circle
         cx={50} cy={50} r={30}
-        stroke={color} strokeWidth={9} strokeLinecap="round" fill="none"
+        stroke={c} strokeWidth={9} strokeLinecap="round" fill="none"
         filter={ghost ? undefined : `url(#oglow-${size})`}
         initial={{ pathLength: anim ? 0 : 1, rotate: -90 }}
         animate={{ pathLength: 1, rotate: -90 }}
@@ -125,6 +199,7 @@ function OSymbol({
 // ── Win line overlay ──────────────────────────────────────────────────────────
 
 function WinLineOverlay({ line }: { line: [number, number, number] }) {
+  const { theme } = useTheme()
   const key    = line.join(",")
   const coords = WIN_LINE_COORDS[key]
   if (!coords) return null
@@ -142,7 +217,7 @@ function WinLineOverlay({ line }: { line: [number, number, number] }) {
       </defs>
       <motion.line
         x1={x1} y1={y1} x2={x2} y2={y2}
-        stroke={WIN_COLOR} strokeWidth={5} strokeLinecap="round"
+        stroke={theme.winColor} strokeWidth={5} strokeLinecap="round"
         filter="url(#wl-glow)"
         initial={{ pathLength: 0 }}
         animate={{ pathLength: 1 }}
@@ -169,6 +244,7 @@ interface CellProps {
 function BoardCell({
   index, cell, isWinCell, currentPlayer, disabled, showGhost, onClick, onEnter, onLeave,
 }: CellProps) {
+  const { theme } = useTheme()
   const canInteract = !disabled && !cell
 
   return (
@@ -176,14 +252,14 @@ function BoardCell({
       className="relative flex items-center justify-center select-none"
       style={{
         cursor: canInteract ? "pointer" : "default",
-        background: isWinCell ? `${WIN_COLOR}12` : "transparent",
+        background: isWinCell ? `${theme.winColor}14` : "transparent",
         transition: "background 0.35s ease",
       }}
       onMouseEnter={canInteract ? onEnter : undefined}
       onMouseLeave={onLeave}
       onClick={canInteract ? onClick : undefined}
       onTouchEnd={canInteract ? (e) => { e.preventDefault(); onClick() } : undefined}
-      whileHover={canInteract ? { background: "rgba(0,216,255,0.07)" } : {}}
+      whileHover={canInteract ? { background: `${theme.gridColor.replace(/[\d.]+\)$/, "0.08)")}` } : {}}
     >
       {/* Ghost preview on hover */}
       <AnimatePresence>
@@ -215,8 +291,8 @@ function BoardCell({
             transition={{ type: "spring", damping: 13, stiffness: 220, mass: 0.6 }}
           >
             {cell === "X"
-              ? <XSymbol size={66} color={isWinCell ? WIN_COLOR : X_COLOR} />
-              : <OSymbol size={66} color={isWinCell ? WIN_COLOR : O_COLOR} />
+              ? <XSymbol size={66} color={isWinCell ? theme.winColor : theme.xColor} />
+              : <OSymbol size={66} color={isWinCell ? theme.winColor : theme.oColor} />
             }
           </motion.div>
         )}
@@ -236,8 +312,12 @@ interface BoardProps {
 }
 
 function GameBoard({ board, winLine, current, disabled, onMove }: BoardProps) {
+  const { theme } = useTheme()
   const [hovered, setHovered] = useState<number | null>(null)
   const winSet = new Set(winLine ?? [])
+
+  const borderRgb = theme.boardBorder
+  const glowColor = theme.boardBorder.replace(/[\d.]+\)$/, "0.12)")
 
   return (
     <div
@@ -245,13 +325,12 @@ function GameBoard({ board, winLine, current, disabled, onMove }: BoardProps) {
       style={{
         maxWidth: 360,
         aspectRatio: "1 / 1",
-        background: "linear-gradient(145deg, rgba(8,4,36,0.97) 0%, rgba(4,2,22,0.99) 100%)",
-        border: "2px solid rgba(0,216,255,0.38)",
+        background: theme.boardBg,
+        border: `2px solid ${borderRgb}`,
         borderRadius: 20,
         boxShadow: [
-          "0 0 0 1px rgba(0,216,255,0.10)",
-          "0 0 50px rgba(0,216,255,0.10)",
-          "0 0 100px rgba(255,45,135,0.05)",
+          `0 0 0 1px ${glowColor}`,
+          `0 0 48px ${glowColor}`,
           "inset 0 0 48px rgba(0,0,0,0.55)",
         ].join(", "),
         overflow: "hidden",
@@ -274,7 +353,7 @@ function GameBoard({ board, winLine, current, disabled, onMove }: BoardProps) {
           <motion.line
             key={`v${i}`}
             x1={x} y1={0} x2={x} y2={300}
-            stroke={GRID_COLOR} strokeWidth={2}
+            stroke={theme.gridColor} strokeWidth={2}
             filter="url(#grid-glow)"
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
@@ -286,7 +365,7 @@ function GameBoard({ board, winLine, current, disabled, onMove }: BoardProps) {
           <motion.line
             key={`h${i}`}
             x1={0} y1={y} x2={300} y2={y}
-            stroke={GRID_COLOR} strokeWidth={2}
+            stroke={theme.gridColor} strokeWidth={2}
             filter="url(#grid-glow)"
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
@@ -300,7 +379,7 @@ function GameBoard({ board, winLine, current, disabled, onMove }: BoardProps) {
             <motion.circle
               key={`dot-${x}-${y}`}
               cx={x} cy={y} r={3.5}
-              fill={GRID_COLOR}
+              fill={theme.gridColor}
               filter="url(#grid-glow)"
               initial={{ opacity: 0, scale: 0 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -343,10 +422,11 @@ function TurnIndicator({
   current: Player; mode: GameMode; cpuSymbol: Player
   cpuThinking: boolean; winner: Player | null; isDraw: boolean
 }) {
+  const { theme } = useTheme()
   if (winner || isDraw) return null
 
   const isYourTurn = mode === "pvp" || current !== cpuSymbol
-  const color      = current === "X" ? X_COLOR : O_COLOR
+  const color      = current === "X" ? theme.xColor : theme.oColor
   const label      = mode === "cpu" && !isYourTurn
     ? cpuThinking ? "Thinking" : "CPU's Turn"
     : `${current}'s Turn`
@@ -401,10 +481,12 @@ function ScorePanel({
   const xLabel = mode === "cpu" && cpuSymbol === "X" ? "CPU" : "Player X"
   const oLabel = mode === "cpu" && cpuSymbol === "O" ? "CPU" : "Player O"
 
+  const { theme } = useTheme()
+
   function ScoreBox({
     player, label, value,
   }: { player: Player; label: string; value: number }) {
-    const color = player === "X" ? X_COLOR : O_COLOR
+    const color = player === "X" ? theme.xColor : theme.oColor
     return (
       <div className="flex flex-col items-center gap-0.5 flex-1">
         <span
@@ -457,10 +539,11 @@ interface ResultOverlayProps {
 function ResultOverlay({
   winner, isDraw, mode, cpuSymbol, particles, onRematch, onMenu,
 }: ResultOverlayProps) {
+  const { theme } = useTheme()
   const isWin = winner !== null
 
   const titleColor = isWin
-    ? winner === "X" ? X_COLOR : O_COLOR
+    ? winner === "X" ? theme.xColor : theme.oColor
     : "rgba(255,255,255,0.55)"
 
   const winnerLabel = () => {
@@ -542,9 +625,9 @@ function ResultOverlay({
             className="px-6 py-3 rounded-full text-xs font-extrabold uppercase tracking-widest text-white"
             style={{
               background: isWin
-                ? `linear-gradient(135deg, ${winner === "X" ? X_COLOR : O_COLOR}, ${winner === "X" ? "#c0006a" : "#0090ab"})`
+                ? `linear-gradient(135deg, ${winner === "X" ? theme.xColor : theme.oColor}, ${winner === "X" ? theme.xColor + "cc" : theme.oColor + "cc"})`
                 : "rgba(255,255,255,0.14)",
-              boxShadow: isWin ? `0 0 20px ${winner === "X" ? X_COLOR : O_COLOR}44` : undefined,
+              boxShadow: isWin ? `0 0 20px ${winner === "X" ? theme.xColor : theme.oColor}44` : undefined,
             }}
           >
             Rematch
@@ -566,11 +649,13 @@ function ResultOverlay({
 // ── Menu screen ───────────────────────────────────────────────────────────────
 
 interface MenuProps {
-  onStart:      (mode: GameMode, diff: Difficulty, sym: Player) => void
-  stats:        TTTStats
+  onStart:       (mode: GameMode, diff: Difficulty, sym: Player) => void
+  stats:         TTTStats
+  onThemeChange: (t: ThemeConfig) => void
 }
 
-function MenuScreen({ onStart, stats }: MenuProps) {
+function MenuScreen({ onStart, stats, onThemeChange }: MenuProps) {
+  const { theme } = useTheme()
   const [mode,       setMode]       = useState<GameMode>("cpu")
   const [difficulty, setDifficulty] = useState<Difficulty>("hard")
   const [symbol,     setSymbol]     = useState<Player>("X")
@@ -594,10 +679,10 @@ function MenuScreen({ onStart, stats }: MenuProps) {
         <h1
           className="text-5xl sm:text-6xl font-extrabold tracking-[0.15em] uppercase mb-1"
           style={{
-            background: `linear-gradient(135deg, #fff 20%, ${O_COLOR} 55%, ${X_COLOR} 100%)`,
+            background: `linear-gradient(135deg, #fff 20%, ${theme.oColor} 55%, ${theme.xColor} 100%)`,
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
-            filter: `drop-shadow(0 0 24px ${X_COLOR}40)`,
+            filter: `drop-shadow(0 0 24px ${theme.xColor}40)`,
           }}
         >
           TIC TAC TOE
@@ -646,6 +731,56 @@ function MenuScreen({ onStart, stats }: MenuProps) {
         className="w-full max-w-[340px] rounded-2xl border border-white/10 p-5 flex flex-col gap-5"
         style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(16px)" }}
       >
+        {/* Theme picker */}
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2.5">
+            Theme
+          </div>
+          <div className="flex items-center gap-2.5">
+            {THEMES.map(t => {
+              const active = theme.id === t.id
+              return (
+                <motion.button
+                  key={t.id}
+                  onClick={() => onThemeChange(t)}
+                  title={t.name}
+                  whileHover={{ scale: 1.12 }}
+                  whileTap={{ scale: 0.92 }}
+                  className="relative flex-1 h-9 rounded-xl transition-all"
+                  style={{
+                    background: `linear-gradient(135deg, ${t.xColor}, ${t.oColor})`,
+                    border: active
+                      ? `2px solid ${t.xColor}`
+                      : "2px solid transparent",
+                    boxShadow: active
+                      ? `0 0 14px ${t.xColor}55, 0 0 28px ${t.oColor}25`
+                      : "none",
+                    outline: "none",
+                  }}
+                >
+                  {active && (
+                    <motion.div
+                      layoutId="theme-active-ring"
+                      className="absolute inset-[-3px] rounded-[13px] pointer-events-none"
+                      style={{ border: `1.5px solid ${t.xColor}88` }}
+                      transition={{ type: "spring", damping: 20, stiffness: 300 }}
+                    />
+                  )}
+                  <span
+                    className="block text-[8px] font-black uppercase tracking-widest leading-none"
+                    style={{
+                      color: active ? "#fff" : "rgba(255,255,255,0.70)",
+                      textShadow: "0 1px 3px rgba(0,0,0,0.6)",
+                    }}
+                  >
+                    {t.name}
+                  </span>
+                </motion.button>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Mode */}
         <div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2">Mode</div>
@@ -657,11 +792,11 @@ function MenuScreen({ onStart, stats }: MenuProps) {
                 className="flex-1 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-widest transition-all"
                 style={{
                   background: mode === m
-                    ? `linear-gradient(135deg, ${X_COLOR}, ${O_COLOR})`
+                    ? `linear-gradient(135deg, ${theme.xColor}, ${theme.oColor})`
                     : "rgba(255,255,255,0.05)",
                   color: mode === m ? "#fff" : "rgba(255,255,255,0.35)",
                   border: mode === m ? "none" : "1px solid rgba(255,255,255,0.10)",
-                  boxShadow: mode === m ? `0 0 16px ${X_COLOR}30` : undefined,
+                  boxShadow: mode === m ? `0 0 16px ${theme.xColor}30` : undefined,
                 }}
               >
                 {m === "pvp" ? "2 Players" : "vs CPU"}
@@ -734,8 +869,8 @@ function MenuScreen({ onStart, stats }: MenuProps) {
                       onClick={() => setSymbol(s)}
                       className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-widest transition-all"
                       style={{
-                        background: symbol === s ? `${color}18` : "rgba(255,255,255,0.04)",
-                        border: symbol === s ? `1px solid ${color}55` : "1px solid rgba(255,255,255,0.08)",
+                        background: symbol === s ? `${color}1c` : "rgba(255,255,255,0.04)",
+                        border: symbol === s ? `1px solid ${color}60` : "1px solid rgba(255,255,255,0.08)",
                         color: symbol === s ? color : "rgba(255,255,255,0.35)",
                       }}
                     >
@@ -774,8 +909,8 @@ function MenuScreen({ onStart, stats }: MenuProps) {
         onClick={() => onStart(mode, difficulty, symbol)}
         className="px-12 py-4 rounded-full text-sm font-extrabold uppercase tracking-[0.22em] text-white"
         style={{
-          background: `linear-gradient(135deg, ${X_COLOR}, ${O_COLOR})`,
-          boxShadow: `0 0 32px ${X_COLOR}40`,
+          background: `linear-gradient(135deg, ${theme.xColor}, ${theme.oColor})`,
+          boxShadow: `0 0 32px ${theme.xColor}40`,
         }}
       >
         ▶ Start Game
@@ -794,6 +929,19 @@ function MenuScreen({ onStart, stats }: MenuProps) {
 const STATS_KEY = "tictactoe-stats"
 
 export function TicTacToeGame() {
+  // ── Theme ─────────────────────────────────────────────────────────────────
+  const [activeTheme, setActiveTheme] = useState<ThemeConfig>(() => {
+    if (typeof window === "undefined") return THEMES[0]
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY)
+      return THEMES.find(t => t.id === saved) ?? THEMES[0]
+    } catch { return THEMES[0] }
+  })
+
+  const changeTheme = useCallback((t: ThemeConfig) => {
+    setActiveTheme(t)
+    try { localStorage.setItem(THEME_STORAGE_KEY, t.id) } catch {}
+  }, [])
   // ── Phase & mode ──────────────────────────────────────────────────────────
   const [phase,      setPhase]      = useState<GamePhase>("menu")
   const [mode,       setMode]       = useState<GameMode>("cpu")
@@ -1067,17 +1215,18 @@ export function TicTacToeGame() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
+    <ThemeContext.Provider value={{ theme: activeTheme }}>
     <div
       className="relative flex min-h-screen w-full flex-col items-center justify-center px-4 py-8 overflow-hidden"
-      style={{ background: "linear-gradient(160deg, #030018 0%, #050024 50%, #030018 100%)" }}
+      style={{ background: activeTheme.pageBg }}
     >
       {/* Background grid texture */}
       <div
         className="pointer-events-none fixed inset-0 opacity-[0.045]"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(0,216,255,0.6) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,216,255,0.6) 1px, transparent 1px)
+            linear-gradient(${activeTheme.gridColor.replace(/[\d.]+\)$/, "0.7)")} 1px, transparent 1px),
+            linear-gradient(90deg, ${activeTheme.gridColor.replace(/[\d.]+\)$/, "0.7)")} 1px, transparent 1px)
           `,
           backgroundSize: "48px 48px",
         }}
@@ -1088,13 +1237,13 @@ export function TicTacToeGame() {
         <div style={{
           position: "absolute", top: "15%", left: "10%",
           width: 360, height: 360, borderRadius: "50%",
-          background: `radial-gradient(circle, ${X_COLOR}12 0%, transparent 70%)`,
+          background: `radial-gradient(circle, ${activeTheme.blobX} 0%, transparent 70%)`,
           filter: "blur(40px)",
         }} />
         <div style={{
           position: "absolute", bottom: "15%", right: "10%",
           width: 320, height: 320, borderRadius: "50%",
-          background: `radial-gradient(circle, ${O_COLOR}10 0%, transparent 70%)`,
+          background: `radial-gradient(circle, ${activeTheme.blobO} 0%, transparent 70%)`,
           filter: "blur(40px)",
         }} />
       </div>
@@ -1103,7 +1252,7 @@ export function TicTacToeGame() {
       <div className="relative z-10 w-full max-w-sm flex flex-col items-center gap-6">
         <AnimatePresence mode="wait">
           {phase === "menu" ? (
-            <MenuScreen key="menu" onStart={startGame} stats={stats} />
+            <MenuScreen key="menu" onStart={startGame} stats={stats} onThemeChange={changeTheme} />
           ) : (
             <motion.div
               key="game"
@@ -1185,5 +1334,6 @@ export function TicTacToeGame() {
         </AnimatePresence>
       </div>
     </div>
+    </ThemeContext.Provider>
   )
 }
