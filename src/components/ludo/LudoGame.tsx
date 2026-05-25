@@ -144,14 +144,17 @@ const DOTS: Record<number, Array<[number, number]>> = {
   6: [[30, 25], [70, 25], [30, 50], [70, 50], [30, 75], [70, 75]],
 };
 
-// Rotation needed to show each value on top
+// Rotation needed to show each value facing the viewer.
+// CSS rotateX(+) tilts top away / bottom toward viewer.
+// CSS rotateY(+) rotates left edge toward viewer.
+// Face positions: 1=front, 6=back, 2=bottom, 5=top, 3=right, 4=left
 const FACE_ROTATIONS: Record<number, { rx: number; ry: number }> = {
-  1: { rx: 0, ry: 0 },
-  2: { rx: -90, ry: 0 },
-  3: { rx: 0, ry: 90 },
-  4: { rx: 0, ry: -90 },
-  5: { rx: 90, ry: 0 },
-  6: { rx: 180, ry: 0 },
+  1: { rx: 0, ry: 0 },       // front — already facing viewer
+  2: { rx: 90, ry: 0 },      // bottom — tilt bottom toward viewer
+  3: { rx: 0, ry: -90 },     // right — rotate right toward viewer
+  4: { rx: 0, ry: 90 },      // left — rotate left toward viewer
+  5: { rx: -90, ry: 0 },     // top — tilt top toward viewer
+  6: { rx: 0, ry: 180 },     // back — rotate 180° to face viewer
 };
 
 interface Dice3DProps {
@@ -863,11 +866,13 @@ export function LudoGame() {
 
   useEffect(() => {
     if (!gs || gs.phase !== "playing" || rolling || animLock.current) return;
+    // Don't start next turn while dice result is still showing
+    if (diceYardOverride) return;
     const cp = getCurrentPlayer(gs);
     if (cp.type !== "ai" || gs.diceRolled) return;
     const t = setTimeout(runAI, 250);
     return () => clearTimeout(t);
-  }, [gs, rolling, runAI]);
+  }, [gs, rolling, runAI, diceYardOverride]);
 
   // ── Handlers ───
   const handleStart = useCallback((cfg: MenuConfig) => {
