@@ -1,14 +1,14 @@
-import { GameHub } from "@/components/ui/game-hub"
 import { VideoHero } from "@/components/ui/video-hero"
+import { HomeContent } from "@/components/ui/home-content"
 
 export default function Home() {
   return (
-    <div className="relative min-h-screen w-full bg-black">
-      {/* Fullscreen video background */}
+    <div className="relative w-full bg-black">
+      {/* Fixed fullscreen video background */}
       <VideoHero />
 
-      {/* Game hub content — overlaid on top of video */}
-      <GameHub />
+      {/* Scrollable content — hero + game hub */}
+      <HomeContent />
     </div>
   )
 }

@@ -157,6 +157,21 @@ const FACE_ROTATIONS: Record<number, { rx: number; ry: number }> = {
   6: { rx: 0, ry: 180 },     // back — rotate 180° to face viewer
 };
 
+// Find the nearest forward-equivalent rotation (avoids reverse spin)
+function nearestForwardRotation(current: number, target: number): number {
+  const t = ((target % 360) + 360) % 360;
+  const base = Math.floor(current / 360) * 360 + t;
+  return base >= current - 20 ? base : base + 360;
+}
+
+// Multi-bounce: 3 bounces with decreasing height. Returns 0 (ground) to -1 (peak).
+function diceBounce(t: number): number {
+  if (t < 0.36) return -Math.sin((t / 0.36) * Math.PI);
+  if (t < 0.64) return -0.32 * Math.sin(((t - 0.36) / 0.28) * Math.PI);
+  if (t < 0.86) return -0.08 * Math.sin(((t - 0.64) / 0.22) * Math.PI);
+  return 0;
+}
+
 interface Dice3DProps {
   value: number;
   rolling: boolean;
@@ -164,21 +179,107 @@ interface Dice3DProps {
   size: number;
   accentColor: string;
   onClick: () => void;
-  diceRolled: boolean;
 }
 
-function Dice3D({ value, rolling, canRoll, size, accentColor, onClick, diceRolled }: Dice3DProps) {
+function Dice3D({ value, rolling, canRoll, size, accentColor, onClick }: Dice3DProps) {
   const half = size / 2;
-  const { rx, ry } = FACE_ROTATIONS[value] || FACE_ROTATIONS[1];
+  const { rx, ry } = FACE_ROTATIONS[value] ?? FACE_ROTATIONS[1];
   const dotR = 10;
 
-  // Track the target rotation so we don't reverse-spin when rolling stops
-  const finalRx = useRef(rx);
-  const finalRy = useRef(ry);
-  if (rolling) {
-    finalRx.current = 720 + rx;
-    finalRy.current = 720 + ry;
-  }
+  const cubeRef = useRef<HTMLDivElement>(null);
+  const shadowRef = useRef<HTMLDivElement>(null);
+  // Rotation state lives in a ref — immune to React's render cycle
+  const rotRef = useRef({ rx: 0, ry: 0 });
+
+  // ── Mount: set initial face ──
+  useEffect(() => {
+    const cube = cubeRef.current;
+    if (!cube) return;
+    const { rx: initRx, ry: initRy } = FACE_ROTATIONS[value] ?? FACE_ROTATIONS[1];
+    rotRef.current = { rx: initRx, ry: initRy };
+    cube.style.transform = `rotateX(${initRx}deg) rotateY(${initRy}deg)`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Rolling animation — pure RAF, no React re-renders ──
+  useEffect(() => {
+    if (!rolling) return;
+    const cube = cubeRef.current;
+    const shadow = shadowRef.current;
+    if (!cube) return;
+
+    // Kill any CSS transition so RAF has full control
+    cube.style.transition = "none";
+    if (shadow) shadow.style.transition = "none";
+
+    const startRx = rotRef.current.rx;
+    const startRy = rotRef.current.ry;
+    const spinRx = 540 + Math.random() * 720;
+    const spinRy = 540 + Math.random() * 720;
+    const wobble = -60 + Math.random() * 120;
+    const t0 = performance.now();
+    let frame: number;
+
+    const tick = () => {
+      if (!cubeRef.current) return;
+      const elapsed = performance.now() - t0;
+      const t = Math.min(1, elapsed / 900);
+      const ease = 1 - Math.pow(1 - t, 3); // cubic ease-out
+
+      const crx = startRx + spinRx * ease;
+      const cry = startRy + spinRy * ease;
+      const crz = wobble * Math.sin(t * Math.PI * 2.5) * (1 - t);
+      const b = diceBounce(t);
+      const cy = b * size * 1.6;
+
+      cubeRef.current.style.transform =
+        `translateY(${cy}px) rotateX(${crx}deg) rotateY(${cry}deg) rotateZ(${crz}deg)`;
+      rotRef.current = { rx: crx, ry: cry };
+
+      if (shadow) {
+        const sc = 1 + b * 0.7;
+        const op = Math.max(0.04, 0.25 + b * 0.2);
+        shadow.style.transform = `scaleX(${sc}) scaleY(${sc})`;
+        shadow.style.opacity = String(op);
+      }
+
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [rolling, size]);
+
+  // ── Settle to correct face — CSS transition ──
+  useEffect(() => {
+    if (rolling) return;
+    const cube = cubeRef.current;
+    const shadow = shadowRef.current;
+    if (!cube) return;
+
+    const curRx = rotRef.current.rx;
+    const curRy = rotRef.current.ry;
+    const tgtRx = nearestForwardRotation(curRx, rx);
+    const tgtRy = nearestForwardRotation(curRy, ry);
+
+    // Snap to current position first (no transition), then transition to target
+    cube.style.transition = "none";
+    cube.style.transform =
+      `translateY(0px) rotateX(${curRx}deg) rotateY(${curRy}deg) rotateZ(0deg)`;
+    // Force reflow so the browser registers the starting position
+    void cube.offsetHeight;
+    // Now apply transition and target
+    cube.style.transition = "transform 0.4s cubic-bezier(0.22, 0.9, 0.36, 1)";
+    cube.style.transform =
+      `translateY(0px) rotateX(${tgtRx}deg) rotateY(${tgtRy}deg) rotateZ(0deg)`;
+    rotRef.current = { rx: tgtRx, ry: tgtRy };
+
+    if (shadow) {
+      shadow.style.transition = "transform 0.3s ease, opacity 0.3s ease";
+      shadow.style.transform = "scaleX(1) scaleY(1)";
+      shadow.style.opacity = "0.25";
+    }
+  }, [rolling, rx, ry]);
 
   // Each face: gradient + inner shadow for 3D depth
   const faceStyle = (transform: string, shade: string): React.CSSProperties => ({
@@ -213,12 +314,8 @@ function Dice3D({ value, rolling, canRoll, size, accentColor, onClick, diceRolle
       onClick={canRoll ? onClick : undefined}
     >
       {/* Ground shadow */}
-      <motion.div
-        animate={rolling
-          ? { scaleX: [1, 0.5, 1.2, 0.6, 1], scaleY: [1, 0.5, 1.2, 0.6, 1], opacity: [0.3, 0.08, 0.35, 0.1, 0.25] }
-          : { scaleX: 1, scaleY: 1, opacity: 0.25 }
-        }
-        transition={rolling ? { duration: 0.8 } : { duration: 0.3 }}
+      <div
+        ref={shadowRef}
         style={{
           position: "absolute",
           bottom: 0,
@@ -229,100 +326,59 @@ function Dice3D({ value, rolling, canRoll, size, accentColor, onClick, diceRolle
           borderRadius: "50%",
           background: "radial-gradient(ellipse, rgba(0,0,0,0.4) 0%, transparent 70%)",
           pointerEvents: "none",
+          opacity: 0.25,
         }}
       />
 
-      {/* 3D cube */}
-      <motion.div
-        animate={rolling
-          ? {
-              rotateX: [finalRx.current - 720, finalRx.current - 400, finalRx.current - 80, finalRx.current],
-              rotateY: [finalRy.current - 720, finalRy.current - 400, finalRy.current - 80, finalRy.current],
-              rotateZ: [0, -100, 40, 0],
-              y: [0, -size * 1.3, -size * 0.3, 0],
-            }
-          : {
-              rotateX: finalRx.current,
-              rotateY: finalRy.current,
-              rotateZ: 0,
-              y: 0,
-            }
-        }
-        transition={rolling
-          ? {
-              duration: 0.85,
-              ease: [0.22, 0.68, 0.35, 1.0],
-              rotateX: { duration: 0.85, ease: [0.22, 0.68, 0.35, 1.0] },
-              rotateY: { duration: 0.85, ease: [0.22, 0.68, 0.35, 1.0] },
-              y: { duration: 0.85, times: [0, 0.3, 0.7, 1], ease: "easeOut" },
-            }
-          : {
-              // Instant snap — no reverse spin when rolling stops
-              rotateX: { duration: 0 },
-              rotateY: { duration: 0 },
-              rotateZ: { duration: 0 },
-              y: { type: "spring", stiffness: 400, damping: 20 },
-            }
-        }
-        whileHover={canRoll ? { y: -5, scale: 1.08 } : {}}
-        whileTap={canRoll ? { scale: 0.92 } : {}}
+      {/* 3D cube — transform controlled entirely by effects (not React) */}
+      <div
+        ref={cubeRef}
         style={{
           width: size,
           height: size,
           position: "relative",
           transformStyle: "preserve-3d",
+          /* NO transform here — RAF and settle effect own it */
           filter: `drop-shadow(0 ${size * 0.08}px ${size * 0.15}px rgba(0,0,0,0.35)) drop-shadow(0 ${size * 0.02}px ${size * 0.04}px rgba(0,0,0,0.2))`,
         }}
       >
         {/* Face 1 — front */}
         <div style={faceStyle(`translateZ(${half}px)`, "#fffef8")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
-            {DOTS[1].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
-            ))}
+            {DOTS[1].map(([cx, cy], i) => <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />)}
           </svg>
         </div>
         {/* Face 6 — back */}
         <div style={faceStyle(`rotateY(180deg) translateZ(${half}px)`, "#f8f6ee")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
-            {DOTS[6].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
-            ))}
+            {DOTS[6].map(([cx, cy], i) => <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />)}
           </svg>
         </div>
         {/* Face 2 — bottom */}
         <div style={faceStyle(`rotateX(-90deg) translateZ(${half}px)`, "#faf8f0")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
-            {DOTS[2].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
-            ))}
+            {DOTS[2].map(([cx, cy], i) => <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />)}
           </svg>
         </div>
         {/* Face 5 — top */}
         <div style={faceStyle(`rotateX(90deg) translateZ(${half}px)`, "#f9f7ef")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
-            {DOTS[5].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
-            ))}
+            {DOTS[5].map(([cx, cy], i) => <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />)}
           </svg>
         </div>
         {/* Face 3 — right */}
         <div style={faceStyle(`rotateY(90deg) translateZ(${half}px)`, "#fcfaf2")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
-            {DOTS[3].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
-            ))}
+            {DOTS[3].map(([cx, cy], i) => <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />)}
           </svg>
         </div>
         {/* Face 4 — left */}
         <div style={faceStyle(`rotateY(-90deg) translateZ(${half}px)`, "#fdfbf3")}>
           <svg width={size * 0.78} height={size * 0.78} viewBox="0 0 100 100">
-            {DOTS[4].map(([cx, cy], i) => (
-              <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />
-            ))}
+            {DOTS[4].map(([cx, cy], i) => <circle key={i} cx={cx} cy={cy} r={dotR} fill="#333" />)}
           </svg>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -827,13 +883,11 @@ export function LudoGame() {
 
       setRolling(true);
       audio.diceShake();
-      // Animate dice display during roll
-      const rollIv = setInterval(() => setDiceDisplay(Math.ceil(Math.random() * 6)), 80);
 
+      // Wait for roll animation (0.9s) + buffer, then show result
       setTimeout(() => {
-        clearInterval(rollIv);
-        setRolling(false);
         const dv = rollDice();
+        setRolling(false);
         setDiceDisplay(dv);
         if (dv === 6) audio.sixRolled(); else audio.diceLand(dv);
 
@@ -860,7 +914,7 @@ export function LudoGame() {
           const res = applyMove(us, tid);
           animateAndApply(tid, res, () => { processing.current = false; });
         }, 1200);
-      }, 650);
+      }, 950);
     }, 500);
   }, [animateAndApply]);
 
@@ -896,12 +950,11 @@ export function LudoGame() {
 
     setRolling(true);
     audio.diceShake();
-    const rollIv = setInterval(() => setDiceDisplay(Math.ceil(Math.random() * 6)), 80);
 
+    // Wait for roll animation (0.9s) + small buffer, then show result
     setTimeout(() => {
-      clearInterval(rollIv);
-      setRolling(false);
       const dv = rollDice();
+      setRolling(false);
       setDiceDisplay(dv);
       if (dv === 6) audio.sixRolled(); else audio.diceLand(dv);
 
@@ -913,7 +966,7 @@ export function LudoGame() {
         n.movablePieces = getMovableTokens(n);
         return n;
       });
-    }, 650);
+    }, 950);
   }, [gs, rolling]);
 
   // Auto-skip when human has no moves — wait so dice result stays visible
@@ -1030,7 +1083,6 @@ export function LudoGame() {
                 size={Math.max(44, cs * 1.5)}
                 accentColor={pal.bg}
                 onClick={handleRoll}
-                diceRolled={gs.diceRolled}
               />
 
               {/* Turn label under dice */}

@@ -775,46 +775,12 @@ export function GameHub() {
 
   return (
     <div
-      className="relative z-10 flex min-h-screen w-full flex-col items-center justify-center px-4 py-14 sm:py-16"
+      className="relative z-10 flex w-full flex-col items-center px-4 pb-14 pt-0 sm:pb-16"
       style={{
         paddingLeft:  "max(1rem, env(safe-area-inset-left))",
         paddingRight: "max(1rem, env(safe-area-inset-right))",
       }}
     >
-      {/* ── Header ── */}
-      <motion.div
-        initial={{ opacity: 0, y: -14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.55, ease: "easeOut" }}
-        className="mb-12 text-center"
-      >
-        {/* Live count */}
-        <p className="mb-5 text-[10px] uppercase tracking-[0.48em] font-semibold"
-          style={{ color: "rgba(255,255,255,0.30)" }}>
-          {liveCount}&ensp;games&ensp;ready
-        </p>
-
-        {/* Wordmark — aurora-tinted gradient */}
-        <h1
-          className="text-[64px] sm:text-[82px] font-black uppercase leading-none tracking-[-0.025em] mb-5 select-none"
-          style={{
-            background: "linear-gradient(168deg, #ffffff 15%, rgba(45,212,191,0.55) 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor:  "transparent",
-          }}
-        >
-          Arcade
-        </h1>
-
-        {/* Thin separator */}
-        <div className="mx-auto mb-5" style={{ width:28, height:1, background:"rgba(255,255,255,0.15)" }}/>
-
-        <p className="text-[13px] leading-relaxed max-w-[200px] mx-auto"
-          style={{ color: "rgba(255,255,255,0.38)" }}>
-          Premium browser games, free to play.
-        </p>
-      </motion.div>
-
       {/* ── Game grid ── */}
       <div className="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {GAMES.map((game, i) => (
