@@ -31,6 +31,7 @@ interface Game {
   cryptogramPreview?: boolean
   tictactoePreview?:  boolean
   ludoPreview?:       boolean
+  neonDevilPreview?:  boolean
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -147,6 +148,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     ludoPreview: true,
+  },
+  {
+    id: "neon-devil",
+    name: "Neon Devil",
+    tagline: "Face the devil. Embrace the rage.",
+    description: "A precision cyberpunk trap-platformer with instant respawns, psychological traps, and screen-shaking deaths.",
+    tags: ["Platformer", "Rage", "Solo"],
+    accent: "#ff2d87",
+    href: "/neon-devil",
+    isLive: true,
+    isNew: true,
+    neonDevilPreview: true,
   },
 ]
 
@@ -625,6 +638,68 @@ function LudoMiniPreview() {
   )
 }
 
+// ── Neon Devil mini preview ──────────────────────────────────────────────────
+
+function NeonDevilMiniPreview() {
+  return (
+    <svg viewBox="0 0 88 72" width={88} height={72}>
+      <defs>
+        <linearGradient id="nd-bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#0a0014"/>
+          <stop offset="100%" stopColor="#1a0028"/>
+        </linearGradient>
+        <filter id="nd-glow">
+          <feGaussianBlur stdDeviation="2" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <rect width={88} height={72} rx={6} fill="url(#nd-bg)"/>
+      {/* Ground blocks */}
+      <rect x={0} y={60} width={88} height={12} fill="#1a1a2e" rx={2}/>
+      <rect x={0} y={60} width={88} height={1} fill="#2a2a4a"/>
+      {/* Platforms */}
+      <rect x={14} y={44} width={22} height={4} fill="#1a1a2e" rx={1}/>
+      <rect x={14} y={44} width={22} height={1} fill="#2a2a4a"/>
+      <rect x={52} y={32} width={22} height={4} fill="#1a1a2e" rx={1}/>
+      <rect x={52} y={32} width={22} height={1} fill="#2a2a4a"/>
+      {/* Spikes */}
+      <polygon points="40,60 44,54 48,60" fill="#ff2d87" filter="url(#nd-glow)"/>
+      <polygon points="48,60 52,54 56,60" fill="#ff2d87" filter="url(#nd-glow)"/>
+      {/* Player */}
+      <motion.rect
+        x={18} y={36} width={6} height={8} rx={1} fill="white" filter="url(#nd-glow)"
+        animate={{ y: [36, 30, 36] }}
+        transition={{ repeat: Infinity, duration: 1.4, ease: "easeInOut" }}
+      />
+      {/* Player visor */}
+      <motion.rect
+        x={21} y={37.5} width={4} height={2} fill="#ff2d87"
+        animate={{ y: [37.5, 31.5, 37.5] }}
+        transition={{ repeat: Infinity, duration: 1.4, ease: "easeInOut" }}
+      />
+      {/* Trail particles */}
+      <motion.circle cx={16} cy={41} r={1.5} fill="#ff2d87"
+        animate={{ opacity: [0.5, 0, 0.5] }}
+        transition={{ repeat: Infinity, duration: 1.4, ease: "easeInOut" }}
+      />
+      <motion.circle cx={14} cy={43} r={1} fill="#ff2d87"
+        animate={{ opacity: [0.3, 0, 0.3] }}
+        transition={{ repeat: Infinity, duration: 1.4, delay: 0.2, ease: "easeInOut" }}
+      />
+      {/* Exit portal */}
+      <motion.rect
+        x={60} y={24} width={6} height={8} rx={1} fill="#fbbf24"
+        animate={{ opacity: [0.6, 1, 0.6] }}
+        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+      />
+      {/* Scanlines */}
+      {[0,6,12,18,24,30,36,42,48,54,60,66].map(y => (
+        <rect key={y} x={0} y={y} width={88} height={1} fill="rgba(0,0,0,0.08)"/>
+      ))}
+    </svg>
+  )
+}
+
 // ── Preview dispatcher ────────────────────────────────────────────────────────
 
 function GamePreview({ game }: { game: Game }) {
@@ -633,6 +708,7 @@ function GamePreview({ game }: { game: Game }) {
   if (game.orbitalPreview)    return <OrbitalMiniPreview/>
   if (game.tictactoePreview)  return <TicTacToeMiniPreview/>
   if (game.ludoPreview)       return <LudoMiniPreview/>
+  if (game.neonDevilPreview)  return <NeonDevilMiniPreview/>
   if (game.hexPreview)        return <HexMiniBoard/>
   if (game.goPreview)         return <GoMiniBoard/>
   if (game.dotPreview)        return <BoxMiniBoard/>
