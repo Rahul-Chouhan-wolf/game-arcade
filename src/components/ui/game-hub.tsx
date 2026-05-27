@@ -650,20 +650,20 @@ function GameCard({ game, index, spanFull = false }: { game: Game; index: number
       transition={{ delay: index * 0.06, duration: 0.42, ease: "easeOut" }}
       className={`group relative overflow-hidden rounded-2xl flex gap-4 p-4 sm:p-5 transition-all duration-300${spanFull ? " sm:col-span-2" : ""}`}
       style={{
-        background:     "rgba(6, 8, 28, 0.60)",
-        border:         "1px solid rgba(255,255,255,0.10)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        background:     "rgba(6, 8, 28, 0.50)",
+        border:         "1px solid rgba(255,255,255,0.08)",
+        backdropFilter: "blur(24px) saturate(1.4)",
+        WebkitBackdropFilter: "blur(24px) saturate(1.4)",
       }}
       onMouseEnter={e => {
         const el = e.currentTarget as HTMLDivElement
-        el.style.border        = "1px solid rgba(255,255,255,0.20)"
-        el.style.background    = "rgba(8, 10, 34, 0.72)"
+        el.style.border        = "1px solid rgba(255,255,255,0.18)"
+        el.style.background    = "rgba(8, 10, 34, 0.65)"
       }}
       onMouseLeave={e => {
         const el = e.currentTarget as HTMLDivElement
-        el.style.border        = "1px solid rgba(255,255,255,0.10)"
-        el.style.background    = "rgba(6, 8, 28, 0.60)"
+        el.style.border        = "1px solid rgba(255,255,255,0.08)"
+        el.style.background    = "rgba(6, 8, 28, 0.50)"
       }}
     >
       {/* Accent glow — behind the thumbnail, tinted to game colour */}
