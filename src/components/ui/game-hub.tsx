@@ -30,6 +30,7 @@ interface Game {
   neonDriftPreview?:  boolean
   cryptogramPreview?: boolean
   tictactoePreview?:  boolean
+  ludoPreview?:       boolean
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -134,6 +135,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     tictactoePreview: true,
+  },
+  {
+    id: "ludo",
+    name: "Ludo",
+    tagline: "Race your tokens home — roll, capture, win",
+    description: "Classic Ludo with 2–4 players, authentic rules, AI opponents (Easy/Medium/Hard), and premium animated visuals.",
+    tags: ["Board", "2–4 Players", "Strategy"],
+    accent: "#f59e0b",
+    href: "/ludo",
+    isLive: true,
+    isNew: true,
+    ludoPreview: true,
   },
 ]
 
@@ -570,6 +583,48 @@ function TicTacToeMiniPreview() {
   )
 }
 
+// ── Ludo mini preview ─────────────────────────────────────────────────────────
+
+function LudoMiniPreview() {
+  return (
+    <svg viewBox="0 0 88 72" width={88} height={72}>
+      <rect x={0} y={0} width={88} height={72} rx={6} fill="#f5f0e8"/>
+      {/* Yard quadrants */}
+      <rect x={2}  y={2}  width={30} height={30} fill="#D32F2F" rx={3}/>
+      <rect x={56} y={2}  width={30} height={30} fill="#388E3C" rx={3}/>
+      <rect x={56} y={40} width={30} height={30} fill="#F9A825" rx={3}/>
+      <rect x={2}  y={40} width={30} height={30} fill="#1565C0" rx={3}/>
+      {/* Inner white yards */}
+      <rect x={5}  y={5}  width={24} height={24} fill="white" rx={3}/>
+      <rect x={59} y={5}  width={24} height={24} fill="white" rx={3}/>
+      <rect x={59} y={43} width={24} height={24} fill="white" rx={3}/>
+      <rect x={5}  y={43} width={24} height={24} fill="white" rx={3}/>
+      {/* Cross track */}
+      <rect x={34} y={2}  width={20} height={68} fill="white" stroke="#ddd" strokeWidth={0.5}/>
+      <rect x={2}  y={30} width={84} height={12} fill="white" stroke="#ddd" strokeWidth={0.5}/>
+      {/* Center */}
+      <polygon points="44,36 34,30 54,30" fill="#D32F2F"/>
+      <polygon points="44,36 54,30 54,42" fill="#388E3C"/>
+      <polygon points="44,36 54,42 34,42" fill="#F9A825"/>
+      <polygon points="44,36 34,42 34,30" fill="#1565C0"/>
+      {/* Tokens in yard */}
+      <motion.circle cx={12} cy={12} r={5} fill="#D32F2F" stroke="#B71C1C" strokeWidth={1}
+        animate={{ scale: [1, 1.15, 1] }} transition={{ repeat: Infinity, duration: 2, delay: 0 }}/>
+      <circle cx={22} cy={12} r={5} fill="#D32F2F" stroke="#B71C1C" strokeWidth={1} opacity={0.55}/>
+      <circle cx={70} cy={12} r={5} fill="#388E3C" stroke="#1B5E20" strokeWidth={1}/>
+      <circle cx={70} cy={58} r={5} fill="#F9A825" stroke="#F57F17" strokeWidth={1}/>
+      <circle cx={12} cy={58} r={5} fill="#1565C0" stroke="#0D47A1" strokeWidth={1}/>
+      {/* Pin token on track */}
+      <motion.path d="M 44 22 C 41 18 39 15 39 13 A 5 5 0 1 1 49 13 C 49 15 47 18 44 22 Z"
+        fill="#D32F2F" stroke="white" strokeWidth={0.8}
+        animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }}/>
+      <circle cx={44} cy={13} r={2.2} fill="white"/>
+      {/* Star */}
+      <text x={44} y={57} textAnchor="middle" fontSize={8} fill="#F9A825">★</text>
+    </svg>
+  )
+}
+
 // ── Preview dispatcher ────────────────────────────────────────────────────────
 
 function GamePreview({ game }: { game: Game }) {
@@ -577,6 +632,7 @@ function GamePreview({ game }: { game: Game }) {
   if (game.neonDriftPreview)  return <NeonDriftMiniPreview/>
   if (game.orbitalPreview)    return <OrbitalMiniPreview/>
   if (game.tictactoePreview)  return <TicTacToeMiniPreview/>
+  if (game.ludoPreview)       return <LudoMiniPreview/>
   if (game.hexPreview)        return <HexMiniBoard/>
   if (game.goPreview)         return <GoMiniBoard/>
   if (game.dotPreview)        return <BoxMiniBoard/>
@@ -594,20 +650,20 @@ function GameCard({ game, index, spanFull = false }: { game: Game; index: number
       transition={{ delay: index * 0.06, duration: 0.42, ease: "easeOut" }}
       className={`group relative overflow-hidden rounded-2xl flex gap-4 p-4 sm:p-5 transition-all duration-300${spanFull ? " sm:col-span-2" : ""}`}
       style={{
-        background:     "rgba(6, 8, 28, 0.60)",
-        border:         "1px solid rgba(255,255,255,0.10)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        background:     "rgba(6, 8, 28, 0.50)",
+        border:         "1px solid rgba(255,255,255,0.08)",
+        backdropFilter: "blur(24px) saturate(1.4)",
+        WebkitBackdropFilter: "blur(24px) saturate(1.4)",
       }}
       onMouseEnter={e => {
         const el = e.currentTarget as HTMLDivElement
-        el.style.border        = "1px solid rgba(255,255,255,0.20)"
-        el.style.background    = "rgba(8, 10, 34, 0.72)"
+        el.style.border        = "1px solid rgba(255,255,255,0.18)"
+        el.style.background    = "rgba(8, 10, 34, 0.65)"
       }}
       onMouseLeave={e => {
         const el = e.currentTarget as HTMLDivElement
-        el.style.border        = "1px solid rgba(255,255,255,0.10)"
-        el.style.background    = "rgba(6, 8, 28, 0.60)"
+        el.style.border        = "1px solid rgba(255,255,255,0.08)"
+        el.style.background    = "rgba(6, 8, 28, 0.50)"
       }}
     >
       {/* Accent glow — behind the thumbnail, tinted to game colour */}
@@ -719,46 +775,12 @@ export function GameHub() {
 
   return (
     <div
-      className="relative z-10 flex min-h-screen w-full flex-col items-center justify-center px-4 py-14 sm:py-16"
+      className="relative z-10 flex w-full flex-col items-center px-4 pb-14 pt-0 sm:pb-16"
       style={{
         paddingLeft:  "max(1rem, env(safe-area-inset-left))",
         paddingRight: "max(1rem, env(safe-area-inset-right))",
       }}
     >
-      {/* ── Header ── */}
-      <motion.div
-        initial={{ opacity: 0, y: -14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.55, ease: "easeOut" }}
-        className="mb-12 text-center"
-      >
-        {/* Live count */}
-        <p className="mb-5 text-[10px] uppercase tracking-[0.48em] font-semibold"
-          style={{ color: "rgba(255,255,255,0.30)" }}>
-          {liveCount}&ensp;games&ensp;ready
-        </p>
-
-        {/* Wordmark — aurora-tinted gradient */}
-        <h1
-          className="text-[64px] sm:text-[82px] font-black uppercase leading-none tracking-[-0.025em] mb-5 select-none"
-          style={{
-            background: "linear-gradient(168deg, #ffffff 15%, rgba(45,212,191,0.55) 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor:  "transparent",
-          }}
-        >
-          Arcade
-        </h1>
-
-        {/* Thin separator */}
-        <div className="mx-auto mb-5" style={{ width:28, height:1, background:"rgba(255,255,255,0.15)" }}/>
-
-        <p className="text-[13px] leading-relaxed max-w-[200px] mx-auto"
-          style={{ color: "rgba(255,255,255,0.38)" }}>
-          Premium browser games, free to play.
-        </p>
-      </motion.div>
-
       {/* ── Game grid ── */}
       <div className="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {GAMES.map((game, i) => (
