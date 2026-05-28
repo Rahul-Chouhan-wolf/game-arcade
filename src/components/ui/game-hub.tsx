@@ -29,8 +29,9 @@ interface Game {
   orbitalPreview?:    boolean
   neonDriftPreview?:  boolean
   cryptogramPreview?: boolean
-  tictactoePreview?:  boolean
-  ludoPreview?:       boolean
+  tictactoePreview?:          boolean
+  ludoPreview?:               boolean
+  snakeAndLaddersPreview?:    boolean
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -147,6 +148,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     ludoPreview: true,
+  },
+  {
+    id: "snake-and-ladders",
+    name: "Snake & Ladders",
+    tagline: "Roll, climb, and slide your way to 100",
+    description: "Cinematic Snake & Ladders with glowing 3D board, animated snakes, golden ladders, 2–4 players with AI, and premium audio.",
+    tags: ["Board", "2–4 Players", "Classic"],
+    accent: "#a855f7",
+    href: "/snake-and-ladders",
+    isLive: true,
+    isNew: true,
+    snakeAndLaddersPreview: true,
   },
 ]
 
@@ -625,9 +638,115 @@ function LudoMiniPreview() {
   )
 }
 
+// ── Snake & Ladders mini preview ─────────────────────────────────────────────
+
+function SnakeAndLaddersMiniPreview() {
+  const W = 88, H = 72
+  const COLS = 5, ROWS = 4
+  const CW = W / COLS, CH = H / ROWS
+  const PURPLE = "#a855f7", GOLD = "#fbbf24", RED = "#ef4444", CYAN = "#22d3ee"
+
+  // Mini 5×4 board (20 cells)
+  const cells = Array.from({ length: ROWS * COLS }, (_, i) => i + 1)
+  // Mini snake: 18→3, mini ladder: 2→12
+  const snakeHead = 18, snakeTail = 3
+  const ladderBase = 2, ladderTop = 13
+
+  const tileXY = (n: number): [number, number] => {
+    const idx = n - 1
+    const row = Math.floor(idx / COLS)
+    const inRow = idx % COLS
+    const col = row % 2 === 0 ? inRow : (COLS - 1 - inRow)
+    return [(COLS - 1 - col) * CW + CW / 2, (ROWS - 1 - row) * CH + CH / 2]
+  }
+
+  const [sx, sy] = tileXY(snakeHead)
+  const [tx, ty] = tileXY(snakeTail)
+  const [lbx, lby] = tileXY(ladderBase)
+  const [ltx, lty] = tileXY(ladderTop)
+  const mx = (sx + tx) / 2, my = (sy + ty) / 2
+  const dx = tx - sx, dy = ty - sy
+  const len = Math.sqrt(dx * dx + dy * dy) || 1
+  const cv = len * 0.3
+  const snakePath = `M ${sx} ${sy} C ${mx - dy/len*cv} ${my + dx/len*cv} ${mx + dy/len*cv} ${my - dx/len*cv} ${tx} ${ty}`
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
+      <defs>
+        <filter id="snl-glow">
+          <feGaussianBlur stdDeviation="1.8" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <linearGradient id="snl-sg" gradientUnits="userSpaceOnUse" x1={sx} y1={sy} x2={tx} y2={ty}>
+          <stop offset="0%" stopColor={RED}/>
+          <stop offset="100%" stopColor={GOLD}/>
+        </linearGradient>
+        <linearGradient id="snl-lg" gradientUnits="userSpaceOnUse" x1={lbx} y1={lby} x2={ltx} y2={lty}>
+          <stop offset="0%" stopColor={GOLD}/>
+          <stop offset="100%" stopColor="#4ade80"/>
+        </linearGradient>
+      </defs>
+
+      {/* Board cells */}
+      {cells.map(n => {
+        const idx = n - 1
+        const row = Math.floor(idx / COLS)
+        const inRow = idx % COLS
+        const col = row % 2 === 0 ? inRow : (COLS - 1 - inRow)
+        const cx = (COLS - 1 - col) * CW
+        const cy = (ROWS - 1 - row) * CH
+        const isSnakeHead = n === snakeHead
+        const isLadderBase = n === ladderBase
+        return (
+          <rect key={n} x={cx} y={cy} width={CW} height={CH}
+            fill={isSnakeHead ? "rgba(239,68,68,0.2)" : isLadderBase ? "rgba(251,191,36,0.18)" : (row + col) % 2 === 0 ? "rgba(30,12,60,0.9)" : "rgba(20,8,45,0.9)"}
+            stroke="rgba(168,85,247,0.12)" strokeWidth={0.5}/>
+        )
+      })}
+
+      {/* Ladder */}
+      <line x1={lbx-3} y1={lby} x2={ltx-3} y2={lty} stroke="url(#snl-lg)" strokeWidth={1.5} strokeLinecap="round" filter="url(#snl-glow)" opacity={0.85}/>
+      <line x1={lbx+3} y1={lby} x2={ltx+3} y2={lty} stroke="url(#snl-lg)" strokeWidth={1.5} strokeLinecap="round" filter="url(#snl-glow)" opacity={0.85}/>
+      {[0.25, 0.5, 0.75].map((t, i) => (
+        <line key={i}
+          x1={lbx-3 + (ltx-lbx)*t} y1={lby + (lty-lby)*t}
+          x2={lbx+3 + (ltx-lbx)*t} y2={lby + (lty-lby)*t}
+          stroke="url(#snl-lg)" strokeWidth={1.2} strokeLinecap="round" filter="url(#snl-glow)" opacity={0.7}/>
+      ))}
+
+      {/* Snake */}
+      <path d={snakePath} fill="none" stroke="url(#snl-sg)" strokeWidth={4} strokeLinecap="round" filter="url(#snl-glow)" opacity={0.85}/>
+      <circle cx={sx} cy={sy} r={3.5} fill={RED} filter="url(#snl-glow)"/>
+
+      {/* Token 1 — purple on tile 7 */}
+      {(() => {
+        const [px, py] = tileXY(7)
+        return <motion.circle cx={px} cy={py} r={3.5} fill={PURPLE} filter="url(#snl-glow)"
+          animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2, delay: 0 }}/>
+      })()}
+      {/* Token 2 — cyan on tile 11 */}
+      {(() => {
+        const [px, py] = tileXY(11)
+        return <circle cx={px} cy={py} r={3} fill={CYAN} opacity={0.8} filter="url(#snl-glow)"/>
+      })()}
+
+      {/* Win star */}
+      {(() => {
+        const [px, py] = tileXY(20)
+        return <motion.text x={px} y={py + 3} textAnchor="middle"
+          style={{ fontSize: 8, fill: PURPLE, filter: "url(#snl-glow)" }}
+          animate={{ opacity: [0.6, 1, 0.6] }} transition={{ repeat: Infinity, duration: 1.8 }}>
+          ★
+        </motion.text>
+      })()}
+    </svg>
+  )
+}
+
 // ── Preview dispatcher ────────────────────────────────────────────────────────
 
 function GamePreview({ game }: { game: Game }) {
+  if (game.snakeAndLaddersPreview) return <SnakeAndLaddersMiniPreview/>
   if (game.cryptogramPreview) return <CryptogramMiniPreview/>
   if (game.neonDriftPreview)  return <NeonDriftMiniPreview/>
   if (game.orbitalPreview)    return <OrbitalMiniPreview/>
