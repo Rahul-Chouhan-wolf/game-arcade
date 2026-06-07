@@ -61,7 +61,51 @@ function memStore(): MemStore {
   return g.__slitherMem
 }
 
-// ── Handler ───────────────────────────────────────────────────────────────────
+// ── Handlers ──────────────────────────────────────────────────────────────────
+
+// GET /api/slither/sync?rooms=a,b,c → live (non-stale) player count per room.
+// Used by the menu to show how many people are on each server.
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url)
+  const rooms = (url.searchParams.get("rooms") || "")
+    .split(",")
+    .map(r => r.trim())
+    .filter(Boolean)
+    .slice(0, 12)
+  const now = Date.now()
+  const creds = redisCreds()
+  const counts: Record<string, number> = {}
+
+  if (creds) {
+    try {
+      const cmds: (string | number)[][] = rooms.map(r => ["HGETALL", ROOM_PREFIX + r])
+      const results = cmds.length ? await redisPipeline(creds, cmds) : []
+      rooms.forEach((r, idx) => {
+        const flat = (results[idx]?.result as string[]) || []
+        let c = 0
+        for (let i = 0; i < flat.length; i += 2) {
+          try {
+            const p: PlayerEntry = JSON.parse(flat[i + 1])
+            if (p && now - p.ts <= STALE_MS) c++
+          } catch { /* skip */ }
+        }
+        counts[r] = c
+      })
+      return Response.json({ enabled: true, mode: "redis", counts })
+    } catch (e) {
+      return Response.json({ enabled: false, mode: "error", counts: {}, error: String(e) })
+    }
+  }
+
+  const store = memStore()
+  for (const r of rooms) {
+    const room_ = store.get(ROOM_PREFIX + r)
+    let c = 0
+    if (room_) for (const [, p] of room_) if (now - p.ts <= STALE_MS) c++
+    counts[r] = c
+  }
+  return Response.json({ enabled: true, mode: "memory", counts })
+}
 
 export async function POST(req: NextRequest) {
   let body: {

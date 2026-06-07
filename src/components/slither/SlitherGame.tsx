@@ -213,9 +213,17 @@ function zoomForRadius(r: number): number {
 
 // ─── Multiplayer (HTTP polling) ────────────────────────────────────────────────
 
-const MP_ROOM    = "global"
 const MP_POLL_MS = 110     // ~9 syncs / second
 const MP_MAX_PTS = 48      // body points sent per sync (keeps payload small)
+
+// Selectable servers (each is an independent shared room)
+const SERVERS = [
+  { id: "mamba",  label: "Mamba",  emoji: "🟢" },
+  { id: "cobra",  label: "Cobra",  emoji: "🔵" },
+  { id: "viper",  label: "Viper",  emoji: "🟣" },
+  { id: "python", label: "Python", emoji: "🟡" },
+] as const
+type ServerId = typeof SERVERS[number]["id"]
 
 interface RemotePlayer {
   id:    string
@@ -1039,14 +1047,16 @@ function renderHUD(
   }
 
   // ── Leaderboard (top-right) ──
-  const sorted = [...state.snakes]
-    .filter(s => s.alive)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
+  const aliveSnakes = state.snakes.filter(s => s.alive)
+  const realUsers   = aliveSnakes.filter(s => s.isPlayer || s.remote)
+  const botSnakes   = aliveSnakes.filter(s => !s.isPlayer && !s.remote)
+  // Show real users. If you're the only one here, fill the board with bots (tagged).
+  const pool   = realUsers.length >= 2 ? realUsers : [...realUsers, ...botSnakes]
+  const sorted = pool.sort((a, b) => b.score - a.score).slice(0, 5)
 
   if (sorted.length > 0) {
     ctx.save()
-    const lbW = 168, lbH = 30 + sorted.length * 20
+    const lbW = 186, lbH = 30 + sorted.length * 20
     const lbX = W - lbW - 12, lbY = 12
 
     ctx.fillStyle   = "rgba(0,0,0,0.55)"
@@ -1062,12 +1072,36 @@ function renderHUD(
     ctx.textAlign = "left"
     ctx.fillText("LEADERBOARD", lbX + 10, lbY + 16)
 
-    ctx.font = "13px 'Segoe UI', system-ui, sans-serif"
     sorted.forEach((s, i) => {
-      const ty = lbY + 30 + i * 20
-      ctx.fillStyle = s.isPlayer ? "#ffd700" : "rgba(255,255,255,0.70)"
-      const rank = `${i + 1}. ${s.name.slice(0, 9).padEnd(9, " ")}  ${Math.floor(s.score)}`
-      ctx.fillText(rank, lbX + 10, ty)
+      const ty    = lbY + 30 + i * 20
+      const isBot = !s.isPlayer && !s.remote
+      const name  = s.name.slice(0, 9)
+
+      // Rank + name (player gold, real players cyan, bots dim)
+      ctx.textAlign = "left"
+      ctx.font      = "13px 'Segoe UI', system-ui, sans-serif"
+      ctx.fillStyle = s.isPlayer ? "#ffd700" : isBot ? "rgba(255,255,255,0.5)" : "rgba(140,220,255,0.95)"
+      const prefix  = `${i + 1}. ${name}`
+      ctx.fillText(prefix, lbX + 10, ty)
+
+      // BOT chip
+      if (isBot) {
+        const nameW = ctx.measureText(prefix).width
+        const chipX = lbX + 14 + nameW
+        ctx.fillStyle = "rgba(255,255,255,0.12)"
+        ctx.beginPath()
+        ctx.roundRect(chipX, ty - 9, 22, 12, 3)
+        ctx.fill()
+        ctx.font      = "bold 8px 'Segoe UI', system-ui, sans-serif"
+        ctx.fillStyle = "rgba(255,255,255,0.55)"
+        ctx.fillText("BOT", chipX + 4, ty - 0.5)
+      }
+
+      // Score (right-aligned)
+      ctx.textAlign = "right"
+      ctx.font      = "13px 'Segoe UI', system-ui, sans-serif"
+      ctx.fillStyle = s.isPlayer ? "#ffd700" : "rgba(255,255,255,0.72)"
+      ctx.fillText(`${Math.floor(s.score)}`, lbX + lbW - 10, ty)
     })
     ctx.restore()
   }
@@ -1146,6 +1180,10 @@ export function SlitherGame() {
   const remoteIdRef = useRef(10000)
   const [mpLive,    setMpLive]    = useState(false)
   const [mpPlayers, setMpPlayers] = useState(0)
+  const [server,    setServer]    = useState<ServerId>("mamba")
+  const serverRef   = useRef<ServerId>("mamba")
+  const [serverCounts, setServerCounts] = useState<Record<string, number>>({})
+  useEffect(() => { serverRef.current = server }, [server])
   if (!meIdRef.current) {
     meIdRef.current =
       (typeof crypto !== "undefined" && crypto.randomUUID)
@@ -1306,16 +1344,17 @@ export function SlitherGame() {
       if (stopped) return
       const gs = stateRef.current
       if (!gs) return
+      const room = serverRef.current
       const player = gs.snakes.find(s => s.isPlayer && s.alive)
       const body = player
-        ? { room: MP_ROOM, me: {
+        ? { room, me: {
             id: meId,
             name: player.name,
             skin: player.skinId,
             score: Math.floor(player.score),
             pts: samplePlayerPts(player),
           } }
-        : { room: MP_ROOM, me: { id: meId }, leave: true }
+        : { room, me: { id: meId }, leave: true }
 
       try {
         const res = await fetch("/api/slither/sync", {
@@ -1343,7 +1382,7 @@ export function SlitherGame() {
       // Best-effort "leave" so others drop us immediately
       try {
         const blob = new Blob(
-          [JSON.stringify({ room: MP_ROOM, me: { id: meId }, leave: true })],
+          [JSON.stringify({ room: serverRef.current, me: { id: meId }, leave: true })],
           { type: "application/json" },
         )
         navigator.sendBeacon("/api/slither/sync", blob)
@@ -1353,6 +1392,23 @@ export function SlitherGame() {
       remoteRef.current.clear()
       setMpPlayers(0)
     }
+  }, [phase])
+
+  // ── Live server player counts (menu only) ──
+  useEffect(() => {
+    if (phase !== "menu") return
+    let stop = false
+    const ids = SERVERS.map(s => s.id).join(",")
+    async function poll() {
+      try {
+        const res = await fetch(`/api/slither/sync?rooms=${encodeURIComponent(ids)}`)
+        const data = await res.json() as { counts?: Record<string, number> }
+        if (!stop) setServerCounts(data.counts || {})
+      } catch { /* ignore */ }
+    }
+    poll()
+    const iv = setInterval(poll, 3000)
+    return () => { stop = true; clearInterval(iv) }
   }, [phase])
 
   // ── Input events ──
@@ -1419,7 +1475,9 @@ export function SlitherGame() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-green-400" />
           </span>
-          LIVE · {mpPlayers} {mpPlayers === 1 ? "player" : "players"} online
+          {SERVERS.find(s => s.id === server)?.label ?? "Live"} · {mpPlayers === 0
+            ? "you only"
+            : `${mpPlayers + 1} players`}
         </div>
       )}
 
@@ -1545,6 +1603,49 @@ export function SlitherGame() {
                         <span className="text-[8px] font-bold uppercase tracking-widest leading-none"
                               style={{ color: active ? s.b1 : "rgba(255,255,255,0.35)" }}>
                           {s.label}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Server selector */}
+              <div className="w-full">
+                <label className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.2em] mb-2"
+                       style={{ color: "rgba(255,255,255,0.45)" }}>
+                  <span>Server</span>
+                  <span className="flex items-center gap-1 normal-case tracking-normal text-[10px]"
+                        style={{ color: "rgba(120,230,140,0.8)" }}>
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400" />
+                    live
+                  </span>
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {SERVERS.map(sv => {
+                    const active = sv.id === server
+                    const count  = serverCounts[sv.id] ?? 0
+                    return (
+                      <button
+                        key={sv.id}
+                        onClick={() => setServer(sv.id)}
+                        title={`${sv.label} — ${count} online`}
+                        className="flex flex-col items-center gap-1 py-2 rounded-xl transition-all"
+                        style={{
+                          background: active ? "rgba(255,51,102,0.18)" : "rgba(255,255,255,0.04)",
+                          border: `1.5px solid ${active ? "#ff3366" : "rgba(255,255,255,0.10)"}`,
+                          boxShadow: active ? "0 0 12px rgba(255,51,102,0.4)" : "none",
+                        }}
+                      >
+                        <span className="text-[12px] font-bold leading-none"
+                              style={{ color: active ? "#fff" : "rgba(255,255,255,0.6)" }}>
+                          {sv.label}
+                        </span>
+                        <span className="flex items-center gap-1 text-[9px] font-semibold leading-none"
+                              style={{ color: count > 0 ? "rgba(120,230,140,0.95)" : "rgba(255,255,255,0.3)" }}>
+                          <span className="inline-block w-1 h-1 rounded-full"
+                                style={{ background: count > 0 ? "#4ade80" : "rgba(255,255,255,0.25)" }} />
+                          {count}
                         </span>
                       </button>
                     )
