@@ -486,37 +486,51 @@ function updateGame(state: GState, mouseAngle: number, boosting: boolean): boole
     }
   }
 
-  // ── Bot vs bot head collisions (simplified) ──
-  for (let i = 0; i < alive.length; i++) {
-    const a = alive[i]
-    if (a.isPlayer) continue
-    const ha = headPos(a)
-    const ra = segRadius(a.score)
+  // ── Bot head vs all snake bodies (same rules as player) ──
+  // Each bot can die by running into ANY snake's body, including the player's.
+  const botsToKill: Snake[] = []
+  for (const bot of alive) {
+    if (bot.isPlayer) continue
+    if (bot.spawnGrace > 0) continue
+    if (botsToKill.includes(bot)) continue   // already dying this tick
 
-    for (let j = i + 1; j < alive.length; j++) {
-      const b = alive[j]
-      if (b.isPlayer) continue
-      const hb = headPos(b)
-      const rb = segRadius(b.score)
-      const hitR = (ra * 0.9 + rb * 0.9) ** 2
-      const dx = ha.x - hb.x, dy = ha.y - hb.y
-      if (dx * dx + dy * dy < hitR) {
-        const loser = a.score <= b.score ? a : b
-        spawnDeathFood(state, loser)
-        loser.alive = false
-        // Respawn loser after delay
-        const loserId = loser.id
-        setTimeout(() => {
-          const s = state.snakes.find(x => x.id === loserId)
-          if (s) {
-            const pos = { x: 250 + Math.random() * (WORLD_W - 500), y: 250 + Math.random() * (WORLD_H - 500) }
-            const fresh = makeSnake(s.id, s.name, s.colors, pos, false)
-            Object.assign(s, fresh)
-          }
-        }, 4000)
-        break
+    const hd = headPos(bot)
+    const pr = segRadius(bot.score)
+    let killed = false
+
+    for (const other of alive) {
+      if (killed) break
+      // Skip first 6 visual segs of self to avoid self-collision at head
+      const startVI = other.id === bot.id ? 6 : 0
+      const or      = segRadius(other.score)
+      const hitR    = (pr * 0.7 + or * 0.7) ** 2
+
+      for (let vi = startVI; vi < other.numSegs; vi++) {
+        const sp = segPos(other, vi * VISUAL_STRIDE)
+        if (!sp) break
+        const dx = sp.x - hd.x, dy = sp.y - hd.y
+        if (dx * dx + dy * dy < hitR) {
+          botsToKill.push(bot)
+          killed = true
+          break
+        }
       }
     }
+  }
+
+  for (const bot of botsToKill) {
+    spawnDeathFood(state, bot)
+    bot.alive = false
+    const botId  = bot.id
+    const botSkin = bot.skinId
+    setTimeout(() => {
+      const s = state.snakes.find(x => x.id === botId)
+      if (s) {
+        const pos   = { x: 250 + Math.random() * (WORLD_W - 500), y: 250 + Math.random() * (WORLD_H - 500) }
+        const fresh = makeSnake(s.id, s.name, s.colors, pos, false, botSkin)
+        Object.assign(s, fresh)
+      }
+    }, 4000)
   }
 
   return false
