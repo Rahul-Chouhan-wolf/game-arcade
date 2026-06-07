@@ -155,6 +155,9 @@ interface Snake {
   score:      number
   skinId:     SkinId
   spawnGrace: number   // frames of spawn invincibility
+  // Multiplayer (remote players from other browsers — not simulated locally)
+  remote?:     boolean
+  targetPath?: Vec2[]  // latest networked body, lerped toward each frame
   // AI only
   aiFood:    number
   aiTimer:   number
@@ -206,6 +209,61 @@ function lerp(a: number, b: number, t: number): number { return a + (b - a) * t 
 function zoomForRadius(r: number): number {
   const z = Math.pow(BASE_SEG_R / r, 0.5)
   return Math.max(0.5, Math.min(1, z))
+}
+
+// ─── Multiplayer (HTTP polling) ────────────────────────────────────────────────
+
+const MP_ROOM    = "global"
+const MP_POLL_MS = 110     // ~9 syncs / second
+const MP_MAX_PTS = 48      // body points sent per sync (keeps payload small)
+
+interface RemotePlayer {
+  id:    string
+  name?: string
+  skin?: string
+  score?: number
+  pts?:  number[]
+}
+
+// Downsample the local player's body into a compact list of world points (head→tail)
+function samplePlayerPts(s: Snake): number[] {
+  const N = s.numSegs
+  const step = Math.max(1, Math.floor(N / MP_MAX_PTS))
+  const pts: number[] = []
+  for (let i = 0; i < N; i += step) {
+    const p = segPos(s, i * VISUAL_STRIDE)
+    if (!p) break
+    pts.push(Math.round(p.x), Math.round(p.y))
+  }
+  return pts
+}
+
+// Rebuild a remote snake's render path (length 2*numSegs, stride-interleaved) from
+// the coarse points it sent, resampled to the segment count its score implies.
+function remotePathFromPts(flat: number[], score: number): Vec2[] {
+  const coarse: Vec2[] = []
+  for (let i = 0; i + 1 < flat.length; i += 2) coarse.push({ x: flat[i], y: flat[i + 1] })
+  if (coarse.length === 0) return []
+
+  let N = numSegsFromScore(score)
+  if (N < MIN_SEGS) N = MIN_SEGS
+  if (N > 300) N = 300   // bound render cost for very large remote snakes
+
+  const path: Vec2[] = []
+  for (let k = 0; k < N; k++) {
+    let pt: Vec2
+    if (coarse.length === 1) {
+      pt = coarse[0]
+    } else {
+      const t = (k / (N - 1)) * (coarse.length - 1)
+      const i = Math.min(coarse.length - 2, Math.floor(t))
+      const f = t - i
+      pt = { x: lerp(coarse[i].x, coarse[i + 1].x, f), y: lerp(coarse[i].y, coarse[i + 1].y, f) }
+    }
+    path.push({ x: pt.x, y: pt.y })
+    path.push({ x: pt.x, y: pt.y })  // interleave duplicate so segPos(i*VISUAL_STRIDE) lands on each point
+  }
+  return path
 }
 
 function segRadius(score: number): number {
@@ -368,6 +426,7 @@ function updateGame(state: GState, mouseAngle: number, boosting: boolean): boole
 
   // ── Steer & move ──
   for (const s of alive) {
+    if (s.remote) continue   // remote players are driven by the network, not simulated
     // Target angle
     let tgt: number
     if (s.isPlayer) {
@@ -405,6 +464,7 @@ function updateGame(state: GState, mouseAngle: number, boosting: boolean): boole
 
   // ── Eat food ──
   for (const s of alive) {
+    if (s.remote) continue   // remote players eat food on their own client
     const hd = headPos(s)
     const eatR = (segRadius(s.score) + 10) ** 2
     for (let fi = food.length - 1; fi >= 0; fi--) {
@@ -497,6 +557,7 @@ function updateGame(state: GState, mouseAngle: number, boosting: boolean): boole
   const botsToKill: Snake[] = []
   for (const bot of alive) {
     if (bot.isPlayer) continue
+    if (bot.remote) continue   // remote players' deaths are decided by their own client
     if (bot.spawnGrace > 0) continue
     if (botsToKill.includes(bot)) continue   // already dying this tick
 
@@ -1079,6 +1140,19 @@ export function SlitherGame() {
   const zoomRef    = useRef(1)
   const phaseRef   = useRef<Phase>("menu")
 
+  // Multiplayer
+  const meIdRef     = useRef<string>("")
+  const remoteRef   = useRef<Map<string, Snake>>(new Map())
+  const remoteIdRef = useRef(10000)
+  const [mpLive,    setMpLive]    = useState(false)
+  const [mpPlayers, setMpPlayers] = useState(0)
+  if (!meIdRef.current) {
+    meIdRef.current =
+      (typeof crypto !== "undefined" && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `p_${Math.random().toString(36).slice(2)}_${Date.now()}`
+  }
+
   // Keep phaseRef in sync
   useEffect(() => { phaseRef.current = phase }, [phase])
 
@@ -1129,6 +1203,20 @@ export function SlitherGame() {
 
       const died = updateGame(gs, mAng, boostRef.current)
 
+      // Smoothly interpolate remote players toward their latest networked body
+      for (const s of gs.snakes) {
+        if (!s.remote || !s.targetPath) continue
+        const tp = s.targetPath
+        if (s.path.length !== tp.length) {
+          s.path = tp.map(p => ({ x: p.x, y: p.y }))
+        } else {
+          for (let i = 0; i < tp.length; i++) {
+            s.path[i].x = lerp(s.path[i].x, tp[i].x, 0.3)
+            s.path[i].y = lerp(s.path[i].y, tp[i].y, 0.3)
+          }
+        }
+      }
+
       renderScene(ctx!, W, H, gs, theme, camRef.current.x, camRef.current.y, gs.tick, zoom)
       renderHUD(ctx!, W, H, gs)
 
@@ -1158,6 +1246,114 @@ export function SlitherGame() {
     rafRef.current = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(rafRef.current)
   }, [phase, theme])
+
+  // ── Multiplayer sync (HTTP polling) ──
+  useEffect(() => {
+    if (phase !== "playing") return
+    let stopped = false
+    const meId = meIdRef.current
+
+    function applyRemote(gs: GState, players: RemotePlayer[]) {
+      const seen = new Set<string>()
+      for (const p of players) {
+        if (!p || !p.id || !Array.isArray(p.pts)) continue
+        const target = remotePathFromPts(p.pts, p.score || 0)
+        if (target.length === 0) continue
+        seen.add(p.id)
+
+        const skinId: SkinId =
+          (SKIN_IDS as readonly string[]).includes(p.skin || "") ? (p.skin as SkinId) : "classic"
+        const sk = SKINS[skinId]
+        const colors: SnakeColors = { b1: sk.b1, b2: sk.b2, head: sk.head, glow: sk.glow, name: sk.name }
+        const numSegs = target.length / 2
+        const name = (p.name || "Player").slice(0, 14)
+        const angle = target.length >= 4
+          ? Math.atan2(target[0].y - target[2].y, target[0].x - target[2].x)
+          : 0
+
+        let snake = remoteRef.current.get(p.id)
+        if (!snake) {
+          snake = {
+            id: remoteIdRef.current++, name, colors,
+            path: target.map(q => ({ x: q.x, y: q.y })), pathAccum: 0,
+            physX: target[0].x, physY: target[0].y,
+            numSegs, angle, tgtAngle: angle, speed: BASE_SPEED, boosting: false,
+            alive: true, isPlayer: false, score: p.score || 0, skinId,
+            spawnGrace: 0, remote: true, targetPath: target,
+            aiFood: -1, aiTimer: 0, aiWander: 0,
+          }
+          remoteRef.current.set(p.id, snake)
+          gs.snakes.push(snake)
+        } else {
+          snake.name = name; snake.colors = colors; snake.skinId = skinId
+          snake.score = p.score || 0; snake.numSegs = numSegs; snake.angle = angle
+          snake.targetPath = target
+          if (snake.path.length !== target.length) snake.path = target.map(q => ({ x: q.x, y: q.y }))
+          snake.physX = target[0].x; snake.physY = target[0].y
+          if (!gs.snakes.includes(snake)) gs.snakes.push(snake)
+        }
+      }
+      // Drop players who left / went stale
+      for (const [id, snake] of remoteRef.current) {
+        if (seen.has(id)) continue
+        remoteRef.current.delete(id)
+        const idx = gs.snakes.indexOf(snake)
+        if (idx >= 0) gs.snakes.splice(idx, 1)
+      }
+    }
+
+    async function tick() {
+      if (stopped) return
+      const gs = stateRef.current
+      if (!gs) return
+      const player = gs.snakes.find(s => s.isPlayer && s.alive)
+      const body = player
+        ? { room: MP_ROOM, me: {
+            id: meId,
+            name: player.name,
+            skin: player.skinId,
+            score: Math.floor(player.score),
+            pts: samplePlayerPts(player),
+          } }
+        : { room: MP_ROOM, me: { id: meId }, leave: true }
+
+      try {
+        const res = await fetch("/api/slither/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        if (stopped) return
+        const data = await res.json() as { enabled?: boolean; players?: RemotePlayer[] }
+        const current = stateRef.current
+        if (current) applyRemote(current, data.players || [])
+        setMpLive(!!data.enabled)
+        setMpPlayers((data.players || []).length)
+      } catch {
+        /* network blip — keep last known remotes */
+      }
+    }
+
+    const iv = setInterval(tick, MP_POLL_MS)
+    tick()
+
+    return () => {
+      stopped = true
+      clearInterval(iv)
+      // Best-effort "leave" so others drop us immediately
+      try {
+        const blob = new Blob(
+          [JSON.stringify({ room: MP_ROOM, me: { id: meId }, leave: true })],
+          { type: "application/json" },
+        )
+        navigator.sendBeacon("/api/slither/sync", blob)
+      } catch { /* ignore */ }
+      const gs = stateRef.current
+      if (gs) gs.snakes = gs.snakes.filter(s => !s.remote)
+      remoteRef.current.clear()
+      setMpPlayers(0)
+    }
+  }, [phase])
 
   // ── Input events ──
   useEffect(() => {
@@ -1215,6 +1411,17 @@ export function SlitherGame() {
         className="absolute inset-0 w-full h-full"
         style={{ display: "block" }}
       />
+
+      {/* ── Live multiplayer badge ── */}
+      {phase === "playing" && mpLive && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1 text-[11px] font-semibold tracking-wide text-white/90 backdrop-blur-sm pointer-events-none">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-400" />
+          </span>
+          LIVE · {mpPlayers} {mpPlayers === 1 ? "player" : "players"} online
+        </div>
+      )}
 
       {/* ── Menu overlay ── */}
       <AnimatePresence>
