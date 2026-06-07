@@ -202,6 +202,12 @@ function lerpAngle(a: number, b: number, t: number): number {
 
 function lerp(a: number, b: number, t: number): number { return a + (b - a) * t }
 
+// Camera zoom shrinks as the snake grows so big snakes don't feel slow / fill the screen
+function zoomForRadius(r: number): number {
+  const z = Math.pow(BASE_SEG_R / r, 0.5)
+  return Math.max(0.5, Math.min(1, z))
+}
+
 function segRadius(score: number): number {
   return BASE_SEG_R + Math.sqrt(Math.max(0, score)) * 0.4
 }
@@ -465,12 +471,12 @@ function updateGame(state: GState, mouseAngle: number, boosting: boolean): boole
     const pr = segRadius(player.score)
 
     for (const other of alive) {
-      // Skip self for first 6 visual segs; use VISUAL_STRIDE to match what player sees
-      const startVI = other.isPlayer ? 6 : 0
+      // You can never die from your own body (authentic Slither.io rule)
+      if (other.id === player.id) continue
       const or      = segRadius(other.score)
       const hitR    = (pr * 0.7 + or * 0.7) ** 2
 
-      for (let vi = startVI; vi < other.numSegs; vi++) {
+      for (let vi = 0; vi < other.numSegs; vi++) {
         const sp = segPos(other, vi * VISUAL_STRIDE)
         if (!sp) break
         const dx = sp.x - hd.x, dy = sp.y - hd.y
@@ -500,12 +506,12 @@ function updateGame(state: GState, mouseAngle: number, boosting: boolean): boole
 
     for (const other of alive) {
       if (killed) break
-      // Skip first 6 visual segs of self to avoid self-collision at head
-      const startVI = other.id === bot.id ? 6 : 0
+      // Bots can't die from their own body either
+      if (other.id === bot.id) continue
       const or      = segRadius(other.score)
       const hitR    = (pr * 0.7 + or * 0.7) ** 2
 
-      for (let vi = startVI; vi < other.numSegs; vi++) {
+      for (let vi = 0; vi < other.numSegs; vi++) {
         const sp = segPos(other, vi * VISUAL_STRIDE)
         if (!sp) break
         const dx = sp.x - hd.x, dy = sp.y - hd.y
@@ -545,11 +551,12 @@ function renderScene(
   theme: ThemeId,
   camX: number, camY: number,
   tick: number,
+  zoom: number = 1,
 ) {
   const th = THEMES[theme]
 
-  const sx = (wx: number) => wx - camX + W * 0.5
-  const sy = (wy: number) => wy - camY + H * 0.5
+  const sx = (wx: number) => (wx - camX) * zoom + W * 0.5
+  const sy = (wy: number) => (wy - camY) * zoom + H * 0.5
 
   const pad = 80
   function inView(wx: number, wy: number, r: number) {
@@ -562,9 +569,9 @@ function renderScene(
   ctx.fillRect(0, 0, W, H)
 
   // ── Grid ──
-  const GRID = 55
-  const ox = ((W * 0.5 - camX) % GRID + GRID) % GRID
-  const oy = ((H * 0.5 - camY) % GRID + GRID) % GRID
+  const GRID = 55 * zoom
+  const ox = ((W * 0.5 - camX * zoom) % GRID + GRID) % GRID
+  const oy = ((H * 0.5 - camY * zoom) % GRID + GRID) % GRID
   ctx.strokeStyle = th.grid
   ctx.lineWidth = 0.8
   ctx.beginPath()
@@ -592,20 +599,21 @@ function renderScene(
   for (const f of state.food) {
     if (!inView(f.x, f.y, f.r + 10)) continue
     const fx = sx(f.x), fy = sy(f.y)
+    const fr = f.r * zoom
 
     ctx.save()
-    ctx.shadowBlur  = 10
+    ctx.shadowBlur  = 10 * zoom
     ctx.shadowColor = f.color
     ctx.fillStyle   = f.color
     ctx.beginPath()
-    ctx.arc(fx, fy, f.r, 0, Math.PI * 2)
+    ctx.arc(fx, fy, fr, 0, Math.PI * 2)
     ctx.fill()
     // Specular highlight
     ctx.shadowBlur = 0
     ctx.globalAlpha = 0.5
     ctx.fillStyle = "#ffffff"
     ctx.beginPath()
-    ctx.arc(fx - f.r * 0.28, fy - f.r * 0.28, f.r * 0.38, 0, Math.PI * 2)
+    ctx.arc(fx - fr * 0.28, fy - fr * 0.28, fr * 0.38, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
   }
@@ -618,7 +626,7 @@ function renderScene(
     ctx.globalAlpha = alpha
     ctx.fillStyle = p.color
     ctx.beginPath()
-    ctx.arc(sx(p.x), sy(p.y), p.r, 0, Math.PI * 2)
+    ctx.arc(sx(p.x), sy(p.y), p.r * zoom, 0, Math.PI * 2)
     ctx.fill()
   }
   ctx.globalAlpha = 1
@@ -632,7 +640,7 @@ function renderScene(
   })
 
   for (const snake of visSnakes) {
-    renderSnake(ctx, snake, sx, sy, W, H, tick)
+    renderSnake(ctx, snake, sx, sy, W, H, tick, zoom)
   }
 
   // ── Name tags ──
@@ -641,7 +649,7 @@ function renderScene(
   ctx.textAlign = "center"
   for (const snake of visSnakes) {
     const hd = headPos(snake)
-    const r  = segRadius(snake.score)
+    const r  = segRadius(snake.score) * zoom
     const nhx = sx(hd.x)
     const nhy = sy(hd.y) - r * 1.5 - 8
     if (nhx < -60 || nhx > W + 60 || nhy < -20 || nhy > H + 20) continue
@@ -690,10 +698,11 @@ function renderSnake(
   sy: (y: number) => number,
   W: number, H: number,
   tick: number,
+  zoom: number = 1,
 ) {
   const skin            = SKINS[snake.skinId]
   const { colors, numSegs } = snake
-  const sr              = segRadius(snake.score)
+  const sr              = segRadius(snake.score) * zoom
   const isGhosting      = snake.spawnGrace > 0
 
   // ── Body segments (tail → head) ──
@@ -1067,6 +1076,7 @@ export function SlitherGame() {
   const boostRef   = useRef(false)
   const rafRef     = useRef(0)
   const camRef     = useRef<Vec2>({ x: WORLD_W / 2, y: WORLD_H / 2 })
+  const zoomRef    = useRef(1)
   const phaseRef   = useRef<Phase>("menu")
 
   // Keep phaseRef in sync
@@ -1077,6 +1087,7 @@ export function SlitherGame() {
     stateRef.current = initState(nickname, skin)
     const p = stateRef.current.snakes.find(s => s.isPlayer)
     if (p) { camRef.current = { x: p.physX, y: p.physY } }
+    zoomRef.current = 1
     setPhase("playing")
   }, [nickname, skin])
 
@@ -1100,13 +1111,16 @@ export function SlitherGame() {
       canvas!.height = H * dpr
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-      // Smooth camera follow
+      // Smooth camera follow + zoom-out as the snake grows
       const player = gs.snakes.find(s => s.isPlayer && s.alive)
       if (player) {
         const hd = headPos(player)
         camRef.current.x = lerp(camRef.current.x, hd.x, 0.12)
         camRef.current.y = lerp(camRef.current.y, hd.y, 0.12)
+        const tgtZoom = zoomForRadius(segRadius(player.score))
+        zoomRef.current = lerp(zoomRef.current, tgtZoom, 0.05)
       }
+      const zoom = zoomRef.current
 
       // Mouse angle relative to canvas centre
       const mx  = mouseRef.current.x - W * 0.5
@@ -1115,14 +1129,14 @@ export function SlitherGame() {
 
       const died = updateGame(gs, mAng, boostRef.current)
 
-      renderScene(ctx!, W, H, gs, theme, camRef.current.x, camRef.current.y, gs.tick)
+      renderScene(ctx!, W, H, gs, theme, camRef.current.x, camRef.current.y, gs.tick, zoom)
       renderHUD(ctx!, W, H, gs)
 
       // ── Direction cursor (player only) ──
       if (player) {
         const hd = headPos(player)
-        const hScreenX = hd.x - camRef.current.x + W * 0.5
-        const hScreenY = hd.y - camRef.current.y + H * 0.5
+        const hScreenX = (hd.x - camRef.current.x) * zoom + W * 0.5
+        const hScreenY = (hd.y - camRef.current.y) * zoom + H * 0.5
         renderDirectionCursor(
           ctx!, W, H,
           mouseRef.current.x, mouseRef.current.y,
@@ -1438,7 +1452,7 @@ export function SlitherGame() {
                   },
                   {
                     icon: "⚠️", title: "Game Over",
-                    lines: ["Your snake dies if it hits any other snake's body.", "Your own tail is safe for the first few segments."],
+                    lines: ["Your snake dies if it hits any other snake's body.", "Your own body is always safe — coil up freely!"],
                   },
                 ].map(sec => (
                   <div key={sec.title}>
