@@ -10,11 +10,12 @@ const WORLD_H         = 5000
 const BASE_SPEED      = 2.8      // px per frame
 const BOOST_MULT      = 1.95
 const BASE_SEG_R      = 9        // base segment radius
-const SEGMENT_PITCH   = 3        // world px between path nodes
+const SEGMENT_PITCH   = 3        // world px between path nodes (physics)
+const VISUAL_STRIDE   = 2        // render every Nth path node (gives 6px visual spacing)
 const FOOD_COUNT      = 1400
 const BOT_COUNT       = 14
 const MIN_SEGS        = 12
-const GROWTH_PER_SEG  = 8        // score points per extra segment
+const GROWTH_PER_SEG  = 2        // score points per extra segment (was 8 — too slow)
 const BOOST_DRAIN     = 4        // score drained per boost tick
 const BOOST_TICK      = 4        // frames between each boost drain
 const BORDER_MARGIN   = 200      // px from edge where AI turns back
@@ -171,7 +172,7 @@ function makeSnake(
 ): Snake {
   const angle = Math.random() * Math.PI * 2
   const path: Vec2[] = []
-  const initLen = MIN_SEGS + 60
+  const initLen = (MIN_SEGS + 60) * VISUAL_STRIDE  // enough nodes for visual stride rendering
   for (let i = 0; i < initLen; i++) {
     path.push({
       x: pos.x - Math.cos(angle) * i * SEGMENT_PITCH,
@@ -199,7 +200,7 @@ function makeFood(x?: number, y?: number): FoodOrb {
     y: y ?? (40 + Math.random() * (WORLD_H - 80)),
     color: col,
     r: 3 + Math.random() * 3.5,
-    value: 1 + Math.floor(Math.random() * 3),
+    value: 2 + Math.floor(Math.random() * 4),  // 2–5 pts: satisfying per-orb growth
   }
 }
 
@@ -272,7 +273,7 @@ function moveSnake(snake: Snake) {
     snake.path.unshift({ x: snake.physX, y: snake.physY })
   }
 
-  const maxPath = snake.numSegs + 80
+  const maxPath = snake.numSegs * VISUAL_STRIDE + 80
   if (snake.path.length > maxPath) snake.path.length = maxPath
 }
 
@@ -589,9 +590,11 @@ function renderSnake(
   const { colors, numSegs } = snake
   const sr = segRadius(snake.score)
 
-  // Draw from tail → head so head renders on top
+  // Draw from tail → head so head renders on top.
+  // Access path[i * VISUAL_STRIDE] so visual segment spacing = SEGMENT_PITCH * VISUAL_STRIDE
+  // (6 px effective gap vs 9 px radius → clear beads, obvious growth)
   for (let i = numSegs - 1; i >= 0; i--) {
-    const pos = segPos(snake, i)
+    const pos = segPos(snake, i * VISUAL_STRIDE)
     if (!pos) continue
     const scx = sx(pos.x), scy = sy(pos.y)
 
