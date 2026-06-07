@@ -21,6 +21,58 @@ const BOOST_TICK      = 4        // frames between each boost drain
 const BORDER_MARGIN   = 200      // px from edge where AI turns back
 const AI_RETARGET     = 90       // frames between AI retargets
 const TURN_RATE       = 0.065    // radians per frame max turn
+const SPAWN_GRACE     = 150      // invincibility frames after spawning
+
+// ─── Skin system ──────────────────────────────────────────────────────────────
+
+const SKIN_IDS = [
+  'classic','sausage','zombie','candy','rainbow','ghost','lava','cookie',
+] as const
+type SkinId = typeof SKIN_IDS[number]
+
+interface SkinDef {
+  label:    string
+  emoji:    string
+  tagline:  string
+  // Player colours (bots keep BOT_COLORS; both use the style below)
+  b1: string; b2: string; head: string; glow: string; name: string
+  segStyle: 'default' | 'spotted' | 'rainbow' | 'ghost' | 'lava'
+  eyeStyle: 'normal' | 'happy' | 'googly' | 'heart' | 'star' | 'scared' | 'angry'
+  spotCol:  string
+}
+
+const SKINS: Record<SkinId, SkinDef> = {
+  classic: { label:"Classic", emoji:"🐍", tagline:"OG slitherer",
+    b1:"#ff3366", b2:"#ff6699", head:"#ff4477", glow:"#ff336644", name:"#ff6699",
+    segStyle:"default", eyeStyle:"normal",  spotCol:"" },
+  sausage: { label:"Sausage", emoji:"🌭", tagline:"Bratwurst mode",
+    b1:"#c97020", b2:"#e89040", head:"#d98030", glow:"#c9702044", name:"#ebb060",
+    segStyle:"spotted", eyeStyle:"happy",   spotCol:"#f5d5a0" },
+  zombie:  { label:"Zombie",  emoji:"🧟", tagline:"Braaains...",
+    b1:"#3d7a1a", b2:"#2a5610", head:"#4a8a20", glow:"#3d7a1a44", name:"#6ab030",
+    segStyle:"spotted", eyeStyle:"googly",  spotCol:"#1a3a0a" },
+  candy:   { label:"Candy",   emoji:"🍬", tagline:"Sweet & deadly",
+    b1:"#ff1144", b2:"#fff0f5", head:"#ff2255", glow:"#ff114444", name:"#ff4477",
+    segStyle:"default", eyeStyle:"heart",   spotCol:"" },
+  rainbow: { label:"Rainbow", emoji:"🌈", tagline:"All the vibes",
+    b1:"#ff0000", b2:"#ff8800", head:"#ff0000", glow:"#ff880044", name:"#ffee00",
+    segStyle:"rainbow", eyeStyle:"star",    spotCol:"" },
+  ghost:   { label:"Ghost",   emoji:"👻", tagline:"Boo! Spooky",
+    b1:"#d0e4ff", b2:"#a8c8ff", head:"#e8f4ff", glow:"#8899ff44", name:"#b0c8ff",
+    segStyle:"ghost",   eyeStyle:"scared",  spotCol:"" },
+  lava:    { label:"Lava",    emoji:"🌋", tagline:"Too hot to handle",
+    b1:"#ff4400", b2:"#ff8800", head:"#ff5500", glow:"#ff440066", name:"#ff9944",
+    segStyle:"lava",    eyeStyle:"angry",   spotCol:"" },
+  cookie:  { label:"Cookie",  emoji:"🍪", tagline:"Nom nom nom",
+    b1:"#a0622a", b2:"#c07a38", head:"#b0702e", glow:"#a0622a44", name:"#d4935a",
+    segStyle:"spotted", eyeStyle:"happy",   spotCol:"#3d2010" },
+}
+
+// Each bot gets a fixed funny skin (cycles through non-classic skins)
+const BOT_SKIN_IDS: SkinId[] = [
+  'sausage','zombie','candy','rainbow','ghost','lava','cookie','sausage',
+  'zombie','candy','rainbow','ghost','lava','cookie',
+]
 
 // ─── Colour palettes ──────────────────────────────────────────────────────────
 
@@ -98,9 +150,11 @@ interface Snake {
   tgtAngle:  number
   speed:     number
   boosting:  boolean
-  alive:     boolean
-  isPlayer:  boolean
-  score:     number
+  alive:      boolean
+  isPlayer:   boolean
+  score:      number
+  skinId:     SkinId
+  spawnGrace: number   // frames of spawn invincibility
   // AI only
   aiFood:    number
   aiTimer:   number
@@ -168,7 +222,7 @@ function segPos(s: Snake, i: number): Vec2 | null {
 
 function makeSnake(
   id: number, name: string, colors: SnakeColors,
-  pos: Vec2, isPlayer: boolean,
+  pos: Vec2, isPlayer: boolean, skinId: SkinId = 'classic',
 ): Snake {
   const angle = Math.random() * Math.PI * 2
   const path: Vec2[] = []
@@ -189,6 +243,8 @@ function makeSnake(
     boosting: false,
     alive: true, isPlayer,
     score: 0,
+    skinId,
+    spawnGrace: SPAWN_GRACE,
     aiFood: -1, aiTimer: 0, aiWander: 0,
   }
 }
@@ -204,15 +260,19 @@ function makeFood(x?: number, y?: number): FoodOrb {
   }
 }
 
-function initState(nickname: string): GState {
+function initState(nickname: string, skinId: SkinId = 'classic'): GState {
   const px = WORLD_W / 2 + (Math.random() - 0.5) * 600
   const py = WORLD_H / 2 + (Math.random() - 0.5) * 600
-  const player = makeSnake(0, nickname.trim() || "You", PLAYER_COLORS, { x: px, y: py }, true)
+  // Player colours come from their chosen skin
+  const skin = SKINS[skinId]
+  const playerColors: SnakeColors = { b1: skin.b1, b2: skin.b2, head: skin.head, glow: skin.glow, name: skin.name }
+  const player = makeSnake(0, nickname.trim() || "You", playerColors, { x: px, y: py }, true, skinId)
 
   const bots: Snake[] = []
   for (let i = 0; i < BOT_COUNT; i++) {
     const pos = { x: 250 + Math.random() * (WORLD_W - 500), y: 250 + Math.random() * (WORLD_H - 500) }
-    bots.push(makeSnake(i + 1, BOT_NAMES[i % BOT_NAMES.length], BOT_COLORS[i % BOT_COLORS.length], pos, false))
+    const botSkinId = BOT_SKIN_IDS[i % BOT_SKIN_IDS.length]
+    bots.push(makeSnake(i + 1, BOT_NAMES[i % BOT_NAMES.length], BOT_COLORS[i % BOT_COLORS.length], pos, false, botSkinId))
   }
 
   const food: FoodOrb[] = []
@@ -393,19 +453,25 @@ function updateGame(state: GState, mouseAngle: number, boosting: boolean): boole
   }
   if (particles.length > 800) particles.splice(0, particles.length - 800)
 
+  // ── Decrement spawn grace for all snakes ──
+  for (const s of alive) {
+    if (s.spawnGrace > 0) s.spawnGrace--
+  }
+
   // ── Player collision vs snake bodies ──
   const player = alive.find(s => s.isPlayer)
-  if (player) {
+  if (player && player.spawnGrace === 0) {
     const hd = headPos(player)
     const pr = segRadius(player.score)
 
     for (const other of alive) {
-      const startSeg = other.isPlayer ? 6 : 0
-      const or = segRadius(other.score)
-      const hitR = (pr * 0.7 + or * 0.7) ** 2
+      // Skip self for first 6 visual segs; use VISUAL_STRIDE to match what player sees
+      const startVI = other.isPlayer ? 6 : 0
+      const or      = segRadius(other.score)
+      const hitR    = (pr * 0.7 + or * 0.7) ** 2
 
-      for (let si = startSeg; si < other.numSegs; si += 2) {
-        const sp = segPos(other, si)
+      for (let vi = startVI; vi < other.numSegs; vi++) {
+        const sp = segPos(other, vi * VISUAL_STRIDE)
         if (!sp) break
         const dx = sp.x - hd.x, dy = sp.y - hd.y
         if (dx * dx + dy * dy < hitR) {
@@ -464,6 +530,7 @@ function renderScene(
   state: GState,
   theme: ThemeId,
   camX: number, camY: number,
+  tick: number,
 ) {
   const th = THEMES[theme]
 
@@ -551,7 +618,7 @@ function renderScene(
   })
 
   for (const snake of visSnakes) {
-    renderSnake(ctx, snake, sx, sy, W, H)
+    renderSnake(ctx, snake, sx, sy, W, H, tick)
   }
 
   // ── Name tags ──
@@ -580,59 +647,103 @@ function renderScene(
   ctx.restore()
 }
 
+// ─── Skin rendering helpers ───────────────────────────────────────────────────
+
+function pathHeart(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(cx, cy + r * 0.5)
+  ctx.bezierCurveTo(cx - r * 1.2, cy,         cx - r * 1.2, cy - r * 0.8, cx, cy - r * 0.2)
+  ctx.bezierCurveTo(cx + r * 1.2, cy - r * 0.8, cx + r * 1.2, cy,         cx, cy + r * 0.5)
+  ctx.closePath()
+}
+
+function pathStar(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  const inner = r * 0.42
+  ctx.beginPath()
+  for (let k = 0; k < 10; k++) {
+    const a = (k * Math.PI / 5) - Math.PI / 2
+    const rad = k % 2 === 0 ? r : inner
+    if (k === 0) ctx.moveTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad)
+    else         ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad)
+  }
+  ctx.closePath()
+}
+
 function renderSnake(
   ctx: CanvasRenderingContext2D,
   snake: Snake,
   sx: (x: number) => number,
   sy: (y: number) => number,
   W: number, H: number,
+  tick: number,
 ) {
+  const skin            = SKINS[snake.skinId]
   const { colors, numSegs } = snake
-  const sr = segRadius(snake.score)
+  const sr              = segRadius(snake.score)
+  const isGhosting      = snake.spawnGrace > 0
 
-  // Draw from tail → head so head renders on top.
-  // Access path[i * VISUAL_STRIDE] so visual segment spacing = SEGMENT_PITCH * VISUAL_STRIDE
-  // (6 px effective gap vs 9 px radius → clear beads, obvious growth)
+  // ── Body segments (tail → head) ──
   for (let i = numSegs - 1; i >= 0; i--) {
     const pos = segPos(snake, i * VISUAL_STRIDE)
     if (!pos) continue
     const scx = sx(pos.x), scy = sy(pos.y)
-
-    // Off-screen skip
     if (scx < -sr * 3 || scx > W + sr * 3 || scy < -sr * 3 || scy > H + sr * 3) continue
 
-    const isHead  = i === 0
-    const isEven  = i % 2 === 0
-    const r       = isHead ? sr * 1.12 : sr
-    const bcolor  = isHead ? colors.head : isEven ? colors.b1 : colors.b2
+    const isHead = i === 0
+    const r      = isHead ? sr * 1.12 : sr
 
-    // Outer glow ring
-    ctx.globalAlpha = 0.22
-    ctx.fillStyle   = colors.glow
+    // ── Colour override per skin ──
+    let bcolor: string
+    if (skin.segStyle === 'rainbow') {
+      const hue = ((i * 26) + tick * 3) % 360
+      bcolor = `hsl(${hue},100%,62%)`
+    } else {
+      bcolor = isHead ? colors.head : (i % 2 === 0 ? colors.b1 : colors.b2)
+    }
+
+    // ── Grace-period flicker (semi-transparent) ──
+    const baseAlpha = isGhosting ? (Math.sin(tick * 0.4) * 0.3 + 0.5) : 1
+
+    // ── Outer glow ──
+    const glowR = r * (skin.segStyle === 'ghost' ? 2.1 : 1.55)
+    ctx.globalAlpha = baseAlpha * (skin.segStyle === 'ghost' ? 0.10 : 0.22)
+    ctx.fillStyle   = skin.segStyle === 'rainbow'
+      ? `hsla(${((i * 26) + tick * 3) % 360},100%,62%,0.35)` : colors.glow
     ctx.beginPath()
-    ctx.arc(scx, scy, r * 1.55, 0, Math.PI * 2)
+    ctx.arc(scx, scy, glowR, 0, Math.PI * 2)
     ctx.fill()
 
-    // Body segment
-    ctx.globalAlpha = 1
-    ctx.fillStyle   = bcolor
+    // ── Body ──
+    ctx.globalAlpha = baseAlpha * (skin.segStyle === 'ghost' ? (isHead ? 0.75 : 0.45) : 1)
+    if (skin.segStyle === 'lava') {
+      ctx.shadowBlur  = 14 + Math.sin(tick * 0.12 + i * 0.4) * 7
+      ctx.shadowColor = '#ff7700'
+    }
+    ctx.fillStyle = bcolor
     ctx.beginPath()
     ctx.arc(scx, scy, r, 0, Math.PI * 2)
     ctx.fill()
+    if (skin.segStyle === 'lava') { ctx.shadowBlur = 0; ctx.shadowColor = 'transparent' }
 
-    // Inner subtle radial gradient sim: lighter top-left arc
-    ctx.globalAlpha = 0.28
-    ctx.fillStyle   = "#ffffff"
-    ctx.beginPath()
-    ctx.arc(scx - r * 0.28, scy - r * 0.28, r * 0.48, 0, Math.PI * 2)
-    ctx.fill()
+    // ── Spotted decoration (sausage cream spots, zombie decay, cookie chips) ──
+    if (skin.segStyle === 'spotted' && !isHead && skin.spotCol) {
+      const sa1 = (i * 1.9) % (Math.PI * 2)
+      const sa2 = sa1 + Math.PI * 0.7
+      const sOff = r * 0.42
+      const sR   = r * 0.22
+      ctx.globalAlpha = baseAlpha * 0.60
+      ctx.fillStyle   = skin.spotCol
+      ctx.beginPath(); ctx.arc(scx + Math.cos(sa1) * sOff, scy + Math.sin(sa1) * sOff, sR,       0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.arc(scx + Math.cos(sa2) * sOff, scy + Math.sin(sa2) * sOff, sR * 0.7, 0, Math.PI * 2); ctx.fill()
+    }
 
-    // Darker bottom shadow
-    ctx.globalAlpha = 0.15
-    ctx.fillStyle   = "#000000"
-    ctx.beginPath()
-    ctx.arc(scx + r * 0.2, scy + r * 0.25, r * 0.55, 0, Math.PI * 2)
-    ctx.fill()
+    // ── Specular highlight + shadow (skip for ghost) ──
+    if (skin.segStyle !== 'ghost') {
+      ctx.globalAlpha = baseAlpha * 0.28; ctx.fillStyle = '#ffffff'
+      ctx.beginPath(); ctx.arc(scx - r * 0.28, scy - r * 0.28, r * 0.48, 0, Math.PI * 2); ctx.fill()
+      ctx.globalAlpha = baseAlpha * 0.15; ctx.fillStyle = '#000000'
+      ctx.beginPath(); ctx.arc(scx + r * 0.2, scy + r * 0.25, r * 0.55, 0, Math.PI * 2); ctx.fill()
+    }
 
     ctx.globalAlpha = 1
   }
@@ -644,33 +755,93 @@ function renderSnake(
   if (hscx < -sr * 3 || hscx > W + sr * 3 || hscy < -sr * 3 || hscy > H + sr * 3) return
 
   const ang    = snake.angle
+  const style  = skin.eyeStyle
   const eyeOff = sr * 0.54
-  const eyeR   = sr * 0.31
-  const pupilR = eyeR * 0.58
-  const pupOff = eyeR * 0.28
+  let   eyeR   = sr * 0.31
+  let   pupilR = eyeR * 0.58
+  let   pupOff = eyeR * 0.28
 
+  if (style === 'googly') { eyeR *= 1.35; pupilR = eyeR * 0.30; pupOff = eyeR * 0.52 }
+  if (style === 'scared') { eyeR *= 1.20; pupilR *= 0.42;       pupOff = eyeR * 0.58 }
+
+  // ── Happy: closed crescents ──
+  if (style === 'happy') {
+    ctx.save()
+    ctx.lineWidth = eyeR * 0.65
+    ctx.lineCap   = 'round'
+    for (const side of [-1, 1]) {
+      const perpAng = ang + side * (Math.PI / 2 - 0.15)
+      const ex = hscx + Math.cos(perpAng) * eyeOff
+      const ey = hscy + Math.sin(perpAng) * eyeOff
+      ctx.fillStyle = '#f0f0f0'
+      ctx.beginPath(); ctx.arc(ex, ey, eyeR, 0, Math.PI * 2); ctx.fill()
+      // Arc opens away from body (perpAng direction) → looks like ^^ squinting smile
+      ctx.strokeStyle = '#222'
+      ctx.beginPath()
+      ctx.arc(ex, ey, eyeR * 0.52, perpAng - Math.PI / 2 + 0.3, perpAng + Math.PI / 2 - 0.3, true)
+      ctx.stroke()
+    }
+    ctx.restore()
+    return
+  }
+
+  // ── All other eye styles ──
   for (const side of [-1, 1]) {
     const perpAng = ang + side * (Math.PI / 2 - 0.15)
-    const ex = hscx + Math.cos(perpAng) * eyeOff
-    const ey = hscy + Math.sin(perpAng) * eyeOff
+    let ex = hscx + Math.cos(perpAng) * eyeOff
+    let ey = hscy + Math.sin(perpAng) * eyeOff
+
+    // Googly: seeded wobble so eyes look silly/crossed
+    if (style === 'googly') {
+      const seed = ((snake.id * 7 + (side > 0 ? 3 : 0)) % 8) * 0.25
+      ex += Math.cos(seed + tick * 0.03) * eyeR * 0.12
+      ey += Math.sin(seed + tick * 0.05) * eyeR * 0.12
+    }
 
     // White sclera
-    ctx.fillStyle = "#f0f0f0"
-    ctx.beginPath()
-    ctx.arc(ex, ey, eyeR, 0, Math.PI * 2)
-    ctx.fill()
+    ctx.fillStyle = '#f0f0f0'
+    ctx.beginPath(); ctx.arc(ex, ey, eyeR, 0, Math.PI * 2); ctx.fill()
 
-    // Pupil
-    ctx.fillStyle = "#111"
-    ctx.beginPath()
-    ctx.arc(ex + Math.cos(ang) * pupOff, ey + Math.sin(ang) * pupOff, pupilR, 0, Math.PI * 2)
-    ctx.fill()
+    // Pupil position
+    const px = ex + Math.cos(ang) * pupOff
+    const py = ey + Math.sin(ang) * pupOff
 
-    // Pupil shine
-    ctx.fillStyle = "rgba(255,255,255,0.7)"
-    ctx.beginPath()
-    ctx.arc(ex + Math.cos(ang) * pupOff - pupilR * 0.25, ey + Math.sin(ang) * pupOff - pupilR * 0.25, pupilR * 0.28, 0, Math.PI * 2)
-    ctx.fill()
+    if (style === 'heart') {
+      ctx.fillStyle = '#cc0033'
+      pathHeart(ctx, px, py, pupilR)
+      ctx.fill()
+    } else if (style === 'star') {
+      ctx.fillStyle   = '#ffcc00'
+      ctx.shadowBlur  = 4
+      ctx.shadowColor = '#ffaa00'
+      pathStar(ctx, px, py, pupilR * 1.1)
+      ctx.fill()
+      ctx.shadowBlur = 0
+    } else {
+      // normal / googly / scared — regular circle pupil
+      ctx.fillStyle = '#111'
+      ctx.beginPath(); ctx.arc(px, py, pupilR, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'
+      ctx.beginPath()
+      ctx.arc(px - pupilR * 0.25, py - pupilR * 0.25, pupilR * 0.28, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // ── Angry brows: outer-back to inner-forward, slanting down = 😠 V ──
+    if (style === 'angry') {
+      const perpX2 = Math.cos(perpAng), perpY2 = Math.sin(perpAng)
+      const fwdX   = Math.cos(ang),     fwdY   = Math.sin(ang)
+      const b1x = ex + perpX2 * eyeR * 1.5 - fwdX * eyeR * 0.55  // outer-back (high)
+      const b1y = ey + perpY2 * eyeR * 1.5 - fwdY * eyeR * 0.55
+      const b2x = ex + perpX2 * eyeR * 0.9 + fwdX * eyeR * 0.55  // inner-fwd (low)
+      const b2y = ey + perpY2 * eyeR * 0.9 + fwdY * eyeR * 0.55
+      ctx.save()
+      ctx.strokeStyle = '#1a0a00'
+      ctx.lineWidth   = eyeR * 0.42
+      ctx.lineCap     = 'round'
+      ctx.beginPath(); ctx.moveTo(b1x, b1y); ctx.lineTo(b2x, b2y); ctx.stroke()
+      ctx.restore()
+    }
   }
 }
 
@@ -872,6 +1043,7 @@ export function SlitherGame() {
   const [phase,     setPhase]     = useState<Phase>("menu")
   const [nickname,  setNickname]  = useState("")
   const [theme,     setTheme]     = useState<ThemeId>("classic")
+  const [skin,      setSkin]      = useState<SkinId>("classic")
   const [showGuide, setShowGuide] = useState(false)
   const [deathInfo, setDeathInfo] = useState({ score: 0, rank: 0 })
 
@@ -888,11 +1060,11 @@ export function SlitherGame() {
 
   // ── Start game ──
   const startGame = useCallback(() => {
-    stateRef.current = initState(nickname)
+    stateRef.current = initState(nickname, skin)
     const p = stateRef.current.snakes.find(s => s.isPlayer)
     if (p) { camRef.current = { x: p.physX, y: p.physY } }
     setPhase("playing")
-  }, [nickname])
+  }, [nickname, skin])
 
   // ── Game loop ──
   useEffect(() => {
@@ -929,7 +1101,7 @@ export function SlitherGame() {
 
       const died = updateGame(gs, mAng, boostRef.current)
 
-      renderScene(ctx!, W, H, gs, theme, camRef.current.x, camRef.current.y)
+      renderScene(ctx!, W, H, gs, theme, camRef.current.x, camRef.current.y, gs.tick)
       renderHUD(ctx!, W, H, gs)
 
       // ── Direction cursor (player only) ──
@@ -1109,6 +1281,39 @@ export function SlitherGame() {
                       </span>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Skin selector */}
+              <div className="w-full">
+                <label className="block text-[11px] font-bold uppercase tracking-[0.2em] mb-2"
+                       style={{ color: "rgba(255,255,255,0.45)" }}>
+                  Snake Skin
+                </label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(Object.keys(SKINS) as SkinId[]).map(sid => {
+                    const s = SKINS[sid]
+                    const active = sid === skin
+                    return (
+                      <button
+                        key={sid}
+                        onClick={() => setSkin(sid)}
+                        title={s.tagline}
+                        className="flex flex-col items-center gap-1 py-2 px-1 rounded-xl transition-all"
+                        style={{
+                          background: active ? `${s.b1}28` : "rgba(255,255,255,0.04)",
+                          border: `1.5px solid ${active ? s.b1 : "rgba(255,255,255,0.10)"}`,
+                          boxShadow: active ? `0 0 12px ${s.b1}55` : "none",
+                        }}
+                      >
+                        <span className="text-[18px] leading-none">{s.emoji}</span>
+                        <span className="text-[8px] font-bold uppercase tracking-widest leading-none"
+                              style={{ color: active ? s.b1 : "rgba(255,255,255,0.35)" }}>
+                          {s.label}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
