@@ -231,6 +231,7 @@ interface RemotePlayer {
   skin?: string
   score?: number
   pts?:  number[]
+  alive?: boolean
 }
 
 // Downsample the local player's body into a compact list of world points (head→tail)
@@ -1310,13 +1311,16 @@ export function SlitherGame() {
           : 0
 
         let snake = remoteRef.current.get(p.id)
+        const wasAlive = snake ? snake.alive : true
+        const isDead = p.alive === false
+
         if (!snake) {
           snake = {
             id: remoteIdRef.current++, name, colors,
             path: target.map(q => ({ x: q.x, y: q.y })), pathAccum: 0,
             physX: target[0].x, physY: target[0].y,
             numSegs, angle, tgtAngle: angle, speed: BASE_SPEED, boosting: false,
-            alive: true, isPlayer: false, score: p.score || 0, skinId,
+            alive: !isDead, isPlayer: false, score: p.score || 0, skinId,
             spawnGrace: 0, remote: true, targetPath: target,
             aiFood: -1, aiTimer: 0, aiWander: 0,
           }
@@ -1328,7 +1332,13 @@ export function SlitherGame() {
           snake.targetPath = target
           if (snake.path.length !== target.length) snake.path = target.map(q => ({ x: q.x, y: q.y }))
           snake.physX = target[0].x; snake.physY = target[0].y
+          snake.alive = !isDead
           if (!gs.snakes.includes(snake)) gs.snakes.push(snake)
+        }
+
+        // Spawn death food if this snake just died
+        if (wasAlive && isDead) {
+          spawnDeathFood(gs, snake)
         }
       }
       // Drop players who left / went stale
@@ -1345,16 +1355,20 @@ export function SlitherGame() {
       const gs = stateRef.current
       if (!gs) return
       const room = serverRef.current
-      const player = gs.snakes.find(s => s.isPlayer && s.alive)
-      const body = player
-        ? { room, me: {
-            id: meId,
-            name: player.name,
-            skin: player.skinId,
-            score: Math.floor(player.score),
-            pts: samplePlayerPts(player),
-          } }
-        : { room, me: { id: meId }, leave: true }
+      const player = gs.snakes.find(s => s.isPlayer)
+      if (!player) return  // game not started yet
+
+      const body = {
+        room,
+        me: {
+          id: meId,
+          name: player.name,
+          skin: player.skinId,
+          score: Math.floor(player.score),
+          alive: player.alive,
+          pts: samplePlayerPts(player),
+        },
+      }
 
       try {
         const res = await fetch("/api/slither/sync", {
