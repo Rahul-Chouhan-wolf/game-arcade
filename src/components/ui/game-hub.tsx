@@ -32,6 +32,8 @@ interface Game {
   tictactoePreview?:          boolean
   ludoPreview?:               boolean
   snakeAndLaddersPreview?:    boolean
+  solarVoyagePreview?:        boolean
+  slitherPreview?:            boolean
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -52,6 +54,18 @@ const GAMES: Game[] = [
       ["absent",   "correct",  "absent",  "present", "absent"  ],
       ["correct",  "correct",  "correct", "correct", "correct" ],
     ],
+  },
+  {
+    id: "slither",
+    name: "Slither",
+    tagline: "Eat. Grow. Dominate the arena.",
+    description: "Classic multiplayer snake — steer your worm, devour glowing orbs, and outlast every rival. Mouse to steer, click to boost.",
+    tags: ["Arcade", "Snake", "AI Bots"],
+    accent: "#ff3366",
+    href: "/slither",
+    isLive: true,
+    isNew: true,
+    slitherPreview: true,
   },
   {
     id: "orbital",
@@ -160,6 +174,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     snakeAndLaddersPreview: true,
+  },
+  {
+    id: "solar-voyage",
+    name: "Solar Voyage",
+    tagline: "Slingshot a rocket across the Solar System",
+    description: "Launch from Earth and lead the orbiting planets to reach any world. Real orbital-mechanics trajectory puzzles with curated missions and gravity assists.",
+    tags: ["Space", "Physics", "Puzzle"],
+    accent: "#7c93f0",
+    href: "/solar-voyage",
+    isLive: true,
+    isNew: true,
+    solarVoyagePreview: true,
   },
 ]
 
@@ -743,9 +769,192 @@ function SnakeAndLaddersMiniPreview() {
   )
 }
 
+// ── Solar Voyage mini preview ─────────────────────────────────────────────────
+
+function SolarVoyageMiniPreview() {
+  const W = 88, H = 72, cx = W / 2, cy = H / 2
+  const orbits = [
+    { r: 11, c: "#9c8b7a", dur: 4 },
+    { r: 18, c: "#d9a066", dur: 6 },
+    { r: 26, c: "#3b82f6", dur: 8 },   // Earth
+    { r: 33, c: "#c1440e", dur: 11 },  // Mars (target)
+  ]
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
+      <defs>
+        <radialGradient id="sv-sun" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stopColor="#fff7e0"/><stop offset="55%" stopColor="#fdb813"/><stop offset="100%" stopColor="#ff8a00"/>
+        </radialGradient>
+        <filter id="sv-glow"><feGaussianBlur stdDeviation="1.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      <rect x={0} y={0} width={W} height={H} rx={6} fill="#05051a"/>
+      {[6,18,30,44,58,70,80].map((v,i)=>(
+        <circle key={i} cx={(v*9+i*11)%W} cy={(v*7+i*5)%H} r={0.6} fill="white" opacity={0.4}/>
+      ))}
+      {/* orbits */}
+      {orbits.map((o,i)=>(
+        <ellipse key={i} cx={cx} cy={cy} rx={o.r} ry={o.r} fill="none"
+          stroke={i===3?"rgba(124,147,240,0.4)":"rgba(255,255,255,0.08)"} strokeWidth={i===3?0.8:0.5} strokeDasharray={i===3?"":"2 3"}/>
+      ))}
+      {/* sun */}
+      <circle cx={cx} cy={cy} r={6} fill="url(#sv-sun)" filter="url(#sv-glow)"/>
+      {/* planets */}
+      {orbits.map((o,i)=>(
+        <motion.g key={i} animate={{ rotate: 360 }} transition={{ duration: o.dur, repeat: Infinity, ease: "linear" }}
+          style={{ transformOrigin: `${cx}px ${cy}px` }}>
+          <circle cx={cx + o.r} cy={cy} r={i>=2?2.4:1.8} fill={o.c} filter="url(#sv-glow)"/>
+        </motion.g>
+      ))}
+      {/* rocket trajectory Earth→Mars */}
+      <motion.path d={`M ${cx+26} ${cy} Q ${cx+40} ${cy-22} ${cx+30} ${cy-14}`}
+        fill="none" stroke="#34d399" strokeWidth={1} strokeDasharray="2 2"
+        animate={{ opacity: [0.3, 0.9, 0.3] }} transition={{ duration: 2.5, repeat: Infinity }}/>
+      <motion.circle r={1.6} fill="#e8eefc" filter="url(#sv-glow)"
+        animate={{ cx: [cx+26, cx+38, cx+30], cy: [cy, cy-18, cy-14] }}
+        transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 0.5, ease: "easeInOut" }}/>
+    </svg>
+  )
+}
+
+// ── Slither mini preview ─────────────────────────────────────────────────────
+
+function SlitherMiniPreview() {
+  const W = 88, H = 72
+  const RED = "#ff3366", PINK = "#ff6699", CYAN = "#48dbfb", YEL = "#ffd93d", GRN = "#6bcb77"
+
+  // Static snake body segments (curved path)
+  const segs = [
+    { x: 62, y: 36 },
+    { x: 55, y: 34 },
+    { x: 48, y: 32 },
+    { x: 41, y: 31 },
+    { x: 34, y: 32 },
+    { x: 28, y: 35 },
+    { x: 24, y: 40 },
+    { x: 23, y: 47 },
+    { x: 26, y: 53 },
+    { x: 32, y: 57 },
+    { x: 39, y: 58 },
+  ]
+
+  // Food orbs
+  const food = [
+    { x: 14, y: 18, c: CYAN,  r: 3.2 },
+    { x: 72, y: 16, c: YEL,   r: 2.8 },
+    { x: 78, y: 52, c: GRN,   r: 3.0 },
+    { x: 50, y: 60, c: "#a29bfe", r: 2.5 },
+    { x: 10, y: 56, c: "#fd79a8", r: 2.6 },
+    { x: 68, y: 36, c: "#ffa502", r: 2.3 },
+    { x: 38, y: 12, c: "#2ed573", r: 2.8 },
+  ]
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ overflow: "visible" }}>
+      <defs>
+        <filter id="sl-glow">
+          <feGaussianBlur stdDeviation="1.8" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="sl-food-glow">
+          <feGaussianBlur stdDeviation="1.4" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <radialGradient id="sl-bg" cx="50%" cy="50%" r="70%">
+          <stop offset="0%" stopColor="#181030"/>
+          <stop offset="100%" stopColor="#0c0c1e"/>
+        </radialGradient>
+      </defs>
+
+      {/* Background */}
+      <rect x={0} y={0} width={W} height={H} rx={6} fill="url(#sl-bg)"/>
+
+      {/* Subtle grid dots */}
+      {[14,28,42,56,70].map(gx =>
+        [12,24,36,48,60].map(gy => (
+          <circle key={`${gx}-${gy}`} cx={gx} cy={gy} r={0.5} fill="rgba(255,255,255,0.07)"/>
+        ))
+      )}
+
+      {/* Food orbs with glow */}
+      {food.map((f, i) => (
+        <g key={i} filter="url(#sl-food-glow)">
+          <motion.circle
+            cx={f.x} cy={f.y} r={f.r}
+            fill={f.c}
+            animate={{ r: [f.r, f.r * 1.25, f.r], opacity: [0.85, 1, 0.85] }}
+            transition={{ duration: 1.4 + i * 0.18, repeat: Infinity, ease: "easeInOut", delay: i * 0.22 }}
+          />
+          {/* Specular */}
+          <circle cx={f.x - f.r * 0.28} cy={f.y - f.r * 0.28} r={f.r * 0.35} fill="rgba(255,255,255,0.5)"/>
+        </g>
+      ))}
+
+      {/* Snake body glow halo */}
+      {segs.map((s, i) => {
+        const r = i === 0 ? 7.5 : 6.5
+        return (
+          <circle key={`g${i}`} cx={s.x} cy={s.y} r={r * 1.55}
+            fill={`${RED}1a`} />
+        )
+      })}
+
+      {/* Snake body segments */}
+      {[...segs].reverse().map((s, ri) => {
+        const i = segs.length - 1 - ri
+        const r = i === 0 ? 7.5 : 6.5
+        const fill = i === 0 ? "#ff4477" : i % 2 === 0 ? RED : PINK
+        return (
+          <motion.g key={i}
+            initial={{ opacity: 0, scale: 0.6 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.05 * (segs.length - 1 - i), duration: 0.25, ease: "backOut" }}
+            style={{ transformOrigin: `${s.x}px ${s.y}px` }}
+          >
+            {/* Highlight */}
+            <circle cx={s.x - r * 0.28} cy={s.y - r * 0.28} r={r * 0.42} fill="rgba(255,255,255,0.22)"/>
+            {/* Body */}
+            <circle cx={s.x} cy={s.y} r={r} fill={fill} filter="url(#sl-glow)"/>
+          </motion.g>
+        )
+      })}
+
+      {/* Eyes on head */}
+      {(() => {
+        const h = segs[0]
+        const ang = Math.atan2(segs[0].y - segs[1].y, segs[0].x - segs[1].x)
+        const er = 2.6
+        const eo = 4.2
+        return ([-1, 1] as const).map(side => {
+          const pa = ang + side * (Math.PI / 2 - 0.15)
+          const ex = h.x + Math.cos(pa) * eo
+          const ey = h.y + Math.sin(pa) * eo
+          return (
+            <g key={side}>
+              <circle cx={ex} cy={ey} r={er} fill="#f0f0f0"/>
+              <circle cx={ex + Math.cos(ang) * 0.8} cy={ey + Math.sin(ang) * 0.8} r={er * 0.6} fill="#111"/>
+              <circle cx={ex + Math.cos(ang) * 0.8 - 0.5} cy={ey + Math.sin(ang) * 0.8 - 0.5} r={er * 0.2} fill="rgba(255,255,255,0.8)"/>
+            </g>
+          )
+        })
+      })()}
+
+      {/* Animated shimmer on snake */}
+      <motion.circle
+        cx={62} cy={36} r={3}
+        fill="rgba(255,255,255,0.35)"
+        animate={{ opacity: [0, 0.35, 0], scale: [0.5, 1.8, 0.5] }}
+        transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "62px 36px" }}
+      />
+    </svg>
+  )
+}
+
 // ── Preview dispatcher ────────────────────────────────────────────────────────
 
 function GamePreview({ game }: { game: Game }) {
+  if (game.slitherPreview)         return <SlitherMiniPreview/>
+  if (game.solarVoyagePreview)     return <SolarVoyageMiniPreview/>
   if (game.snakeAndLaddersPreview) return <SnakeAndLaddersMiniPreview/>
   if (game.cryptogramPreview) return <CryptogramMiniPreview/>
   if (game.neonDriftPreview)  return <NeonDriftMiniPreview/>
