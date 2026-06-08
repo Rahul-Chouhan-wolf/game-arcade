@@ -539,25 +539,41 @@ function updateGame(state: GState, mouseAngle: number, boosting: boolean): boole
     const hd = headPos(player)
     const pr = segRadius(player.score)
 
+    let playerDies = false
     for (const other of alive) {
       // You can never die from your own body (authentic Slither.io rule)
       if (other.id === player.id) continue
-      const or      = segRadius(other.score)
-      const hitR    = (pr * 0.7 + or * 0.7) ** 2
+      const or = segRadius(other.score)
+      const oh = headPos(other)
 
-      for (let vi = 0; vi < other.numSegs; vi++) {
+      // Head-to-head: the SMALLER snake dies (ties kill both). A bigger snake
+      // survives and the smaller one dies in its own collision pass.
+      const headR = ((pr + or) * 0.9) ** 2
+      const hx = oh.x - hd.x, hy = oh.y - hd.y
+      if (hx * hx + hy * hy < headR) {
+        if (player.score <= other.score) { playerDies = true; break }
+        continue   // player is longer → wins the head-on, skip this snake
+      }
+
+      // Head-to-body: running your head into another snake's body kills you
+      const bodyR = (pr * 0.7 + or * 0.7) ** 2
+      let hit = false
+      for (let vi = 1; vi < other.numSegs; vi++) {
         const sp = segPos(other, vi * VISUAL_STRIDE)
         if (!sp) break
         const dx = sp.x - hd.x, dy = sp.y - hd.y
-        if (dx * dx + dy * dy < hitR) {
-          spawnDeathFood(state, player)
-          player.alive = false
-          const rank = snakes.filter(s => s.alive && s.score > player.score).length + 1
-          state.deathScore = Math.floor(player.score)
-          state.deathRank  = rank
-          return true
-        }
+        if (dx * dx + dy * dy < bodyR) { hit = true; break }
       }
+      if (hit) { playerDies = true; break }
+    }
+
+    if (playerDies) {
+      spawnDeathFood(state, player)
+      player.alive = false
+      const rank = snakes.filter(s => s.alive && s.score > player.score).length + 1
+      state.deathScore = Math.floor(player.score)
+      state.deathRank  = rank
+      return true
     }
   }
 
@@ -578,14 +594,24 @@ function updateGame(state: GState, mouseAngle: number, boosting: boolean): boole
       if (killed) break
       // Bots can't die from their own body either
       if (other.id === bot.id) continue
-      const or      = segRadius(other.score)
-      const hitR    = (pr * 0.7 + or * 0.7) ** 2
+      const or = segRadius(other.score)
+      const oh = headPos(other)
 
-      for (let vi = 0; vi < other.numSegs; vi++) {
+      // Head-to-head: the smaller snake dies (ties kill both)
+      const headR = ((pr + or) * 0.9) ** 2
+      const hx = oh.x - hd.x, hy = oh.y - hd.y
+      if (hx * hx + hy * hy < headR) {
+        if (bot.score <= other.score) { botsToKill.push(bot); killed = true }
+        continue   // bot is longer → wins the head-on
+      }
+
+      // Head-to-body
+      const bodyR = (pr * 0.7 + or * 0.7) ** 2
+      for (let vi = 1; vi < other.numSegs; vi++) {
         const sp = segPos(other, vi * VISUAL_STRIDE)
         if (!sp) break
         const dx = sp.x - hd.x, dy = sp.y - hd.y
-        if (dx * dx + dy * dy < hitR) {
+        if (dx * dx + dy * dy < bodyR) {
           botsToKill.push(bot)
           killed = true
           break
