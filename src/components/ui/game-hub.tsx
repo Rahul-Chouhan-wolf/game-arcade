@@ -34,6 +34,7 @@ interface Game {
   snakeAndLaddersPreview?:    boolean
   solarVoyagePreview?:        boolean
   slitherPreview?:            boolean
+  railRunnerPreview?:         boolean
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -186,6 +187,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     solarVoyagePreview: true,
+  },
+  {
+    id: "subway-surfer",
+    name: "Rail Runner",
+    tagline: "Jump, roll, dodge. How far can you run?",
+    description: "3-lane endless runner. Switch lanes, leap over barriers, roll under low bars, and collect coins. Speed ramps up — survive as long as you can.",
+    tags: ["Runner", "Endless", "Arcade"],
+    accent: "#00e5ff",
+    href: "/subway-surfer",
+    isLive: true,
+    isNew: true,
+    railRunnerPreview: true,
   },
 ]
 
@@ -950,9 +963,57 @@ function SlitherMiniPreview() {
   )
 }
 
+// ── Rail Runner mini preview ──────────────────────────────────────────────────
+
+function RailRunnerMiniPreview() {
+  return (
+    <svg viewBox="0 0 124 72" width="124" height="72" xmlns="http://www.w3.org/2000/svg">
+      <rect width="124" height="72" rx="6" fill="#08081a"/>
+      {/* Sky */}
+      <defs>
+        <linearGradient id="rrsky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#050510"/>
+          <stop offset="100%" stopColor="#160a2c"/>
+        </linearGradient>
+      </defs>
+      <rect width="124" height="29" fill="url(#rrsky)"/>
+      {/* Stars */}
+      {[10,28,45,62,80,96,112,18,55,90].map((x, i) => (
+        <circle key={i} cx={x} cy={4 + (i * 3) % 18} r="0.7" fill="rgba(255,255,255,0.5)"/>
+      ))}
+      {/* Road trapezoid */}
+      <polygon points="62,29 68,29 124,70 0,70" fill="#141428"/>
+      <polygon points="62,29 68,29 116,68 8,68" fill="#18183a"/>
+      {/* Road edge neon lines */}
+      <line x1="62" y1="29" x2="8"   y2="68" stroke="#00e5ff" strokeWidth="1.2" opacity="0.9"/>
+      <line x1="68" y1="29" x2="116" y2="68" stroke="#00e5ff" strokeWidth="1.2" opacity="0.9"/>
+      {/* Lane dividers */}
+      <line x1="63.7" y1="29" x2="38"  y2="68" stroke="rgba(0,229,255,0.3)" strokeWidth="0.8" strokeDasharray="4 4"/>
+      <line x1="66.3" y1="29" x2="86"  y2="68" stroke="rgba(0,229,255,0.3)" strokeWidth="0.8" strokeDasharray="4 4"/>
+      {/* Obstacles */}
+      <rect x="22" y="47" width="18" height="14" rx="1" fill="#cc2200" opacity="0.9"/>
+      <rect x="22" y="47" width="18" height="2.5" fill="#ff5533"/>
+      <rect x="82" y="52" width="18" height="8"  rx="1" fill="#bb7700" opacity="0.85"/>
+      <rect x="82" y="52" width="18" height="2"  fill="#ffaa44"/>
+      {/* Coins */}
+      {[54, 56.5, 59].map((x, i) => (
+        <circle key={i} cx={x} cy={44 - i * 3} r="2.2" fill="#ffd700" opacity={0.9 - i * 0.1}/>
+      ))}
+      {/* Player */}
+      <rect x="57" y="55" width="10" height="13" rx="2" fill="#00e5ff"/>
+      <rect x="57" y="55" width="2.2" height="13" fill="#00ffff"/>
+      <rect x="60" y="56.5" width="3" height="3.5" fill="rgba(255,255,255,0.25)"/>
+      {/* Eyes */}
+      <rect x="59.5" y="57.5" width="2" height="2" fill="#fff"/>
+      <rect x="63"   y="57.5" width="2" height="2" fill="#fff"/>
+    </svg>
+  )
+}
+
 // ── Preview dispatcher ────────────────────────────────────────────────────────
 
 function GamePreview({ game }: { game: Game }) {
+  if (game.railRunnerPreview)      return <RailRunnerMiniPreview/>
   if (game.slitherPreview)         return <SlitherMiniPreview/>
   if (game.solarVoyagePreview)     return <SolarVoyageMiniPreview/>
   if (game.snakeAndLaddersPreview) return <SnakeAndLaddersMiniPreview/>
