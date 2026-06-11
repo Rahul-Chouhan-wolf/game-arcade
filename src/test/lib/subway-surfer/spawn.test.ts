@@ -45,6 +45,24 @@ describe('spawnRow', () => {
     }
   })
 
+  it('only produces valid obstacle types', () => {
+    for (let seed = 0; seed < 200; seed++) {
+      for (const o of spawnRow(seed).obstacles) {
+        expect(['train', 'barrier', 'lowbar']).toContain(o.type)
+      }
+    }
+  })
+
+  it('all three obstacle types appear across seeds', () => {
+    const types = new Set<string>()
+    for (let seed = 0; seed < 300; seed++) {
+      for (const o of spawnRow(seed).obstacles) types.add(o.type)
+    }
+    expect(types.has('train')).toBe(true)
+    expect(types.has('barrier')).toBe(true)
+    expect(types.has('lowbar')).toBe(true)
+  })
+
   it('varies between 1 and 2 blocked lanes across seeds', () => {
     const counts = new Set<number>()
     for (let seed = 0; seed < 200; seed++) counts.add(spawnRow(seed).obstacles.length)

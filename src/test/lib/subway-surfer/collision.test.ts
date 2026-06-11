@@ -1,11 +1,41 @@
 import { describe, it, expect } from 'vitest'
 import {
   isHit, isCoinCollected,
-  BARRIER_H, LOWBAR_H, HIT_Z,
+  TRAIN_H, BARRIER_H, LOWBAR_H, HIT_Z, OBSTACLE_LEN,
 } from '@/lib/subway-surfer/collision'
 import { PLAYER_STAND_H, PLAYER_ROLL_H, JUMP_VELOCITY, GRAVITY } from '@/lib/subway-surfer/physics'
 
 const CENTER = 1 // lane index
+
+describe('isHit — train', () => {
+  it('hits a train in the same lane at z≈0', () => {
+    expect(isHit(CENTER, 0, false, CENTER, 0, 'train')).toBe(true)
+  })
+
+  it('jumping does NOT clear a train (peak jump < TRAIN_H)', () => {
+    const peak = (JUMP_VELOCITY * JUMP_VELOCITY) / (2 * Math.abs(GRAVITY))
+    expect(peak).toBeLessThan(TRAIN_H)
+    expect(isHit(CENTER, peak, false, CENTER, 0, 'train')).toBe(true)
+  })
+
+  it('rolling does NOT clear a train', () => {
+    expect(isHit(CENTER, 0, true, CENTER, 0, 'train')).toBe(true)
+  })
+
+  it('different lane is safe even alongside a train body', () => {
+    expect(isHit(CENTER, 0, false, 0, -5, 'train')).toBe(false)
+  })
+
+  it('train body is long — still hits when its nose has passed the player', () => {
+    // Nose at z=-10, body extends to -10+16=6 → overlaps the player zone
+    expect(isHit(CENTER, 0, false, CENTER, -10, 'train')).toBe(true)
+  })
+
+  it('no hit once the full train body has passed', () => {
+    const past = -(OBSTACLE_LEN.train + HIT_Z + 0.1)
+    expect(isHit(CENTER, 0, false, CENTER, past, 'train')).toBe(false)
+  })
+})
 
 describe('isHit — barrier', () => {
   it('hits a barrier in the same lane at z≈0', () => {

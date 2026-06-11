@@ -191,10 +191,10 @@ const GAMES: Game[] = [
   {
     id: "subway-surfer",
     name: "Rail Runner",
-    tagline: "Jump, roll, dodge. How far can you run?",
-    description: "3-lane endless runner. Switch lanes, leap over barriers, roll under low bars, and collect coins. Speed ramps up — survive as long as you can.",
+    tagline: "Dodge trains. Grab coins. Don't look back.",
+    description: "3-lane endless runner on live train tracks. Leap the barricades, roll under signal bars, swerve around trains, and chain coins as the speed climbs.",
     tags: ["Runner", "Endless", "Arcade"],
-    accent: "#00e5ff",
+    accent: "#f2b418",
     href: "/subway-surfer",
     isLive: true,
     isNew: true,
@@ -968,44 +968,58 @@ function SlitherMiniPreview() {
 function RailRunnerMiniPreview() {
   return (
     <svg viewBox="0 0 124 72" width="124" height="72" xmlns="http://www.w3.org/2000/svg">
-      <rect width="124" height="72" rx="6" fill="#08081a"/>
-      {/* Sky */}
       <defs>
         <linearGradient id="rrsky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#050510"/>
-          <stop offset="100%" stopColor="#160a2c"/>
+          <stop offset="0%" stopColor="#2f8fe0"/>
+          <stop offset="85%" stopColor="#9fd6f2"/>
+          <stop offset="100%" stopColor="#ffe9c4"/>
+        </linearGradient>
+        <linearGradient id="rrgnd" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#8d8579"/>
+          <stop offset="100%" stopColor="#5c544a"/>
         </linearGradient>
       </defs>
-      <rect width="124" height="29" fill="url(#rrsky)"/>
-      {/* Stars */}
-      {[10,28,45,62,80,96,112,18,55,90].map((x, i) => (
-        <circle key={i} cx={x} cy={4 + (i * 3) % 18} r="0.7" fill="rgba(255,255,255,0.5)"/>
+      <rect width="124" height="72" rx="6" fill="url(#rrsky)"/>
+      {/* Sun + clouds */}
+      <circle cx="98" cy="10" r="8" fill="rgba(255,250,210,0.9)"/>
+      <ellipse cx="28" cy="9"  rx="10" ry="3.2" fill="rgba(255,255,255,0.9)"/>
+      <ellipse cx="58" cy="14" rx="7"  ry="2.6" fill="rgba(255,255,255,0.8)"/>
+      {/* Skyline */}
+      {[6,18,32,48,64,80,96,110].map((x, i) => (
+        <rect key={i} x={x} y={24 - (i * 5) % 8} width={8 + (i % 3) * 3} height={(i * 5) % 8 + 4} fill="rgba(110,140,175,0.55)"/>
       ))}
-      {/* Road trapezoid */}
-      <polygon points="62,29 68,29 124,70 0,70" fill="#141428"/>
-      <polygon points="62,29 68,29 116,68 8,68" fill="#18183a"/>
-      {/* Road edge neon lines */}
-      <line x1="62" y1="29" x2="8"   y2="68" stroke="#00e5ff" strokeWidth="1.2" opacity="0.9"/>
-      <line x1="68" y1="29" x2="116" y2="68" stroke="#00e5ff" strokeWidth="1.2" opacity="0.9"/>
-      {/* Lane dividers */}
-      <line x1="63.7" y1="29" x2="38"  y2="68" stroke="rgba(0,229,255,0.3)" strokeWidth="0.8" strokeDasharray="4 4"/>
-      <line x1="66.3" y1="29" x2="86"  y2="68" stroke="rgba(0,229,255,0.3)" strokeWidth="0.8" strokeDasharray="4 4"/>
-      {/* Obstacles */}
-      <rect x="22" y="47" width="18" height="14" rx="1" fill="#cc2200" opacity="0.9"/>
-      <rect x="22" y="47" width="18" height="2.5" fill="#ff5533"/>
-      <rect x="82" y="52" width="18" height="8"  rx="1" fill="#bb7700" opacity="0.85"/>
-      <rect x="82" y="52" width="18" height="2"  fill="#ffaa44"/>
-      {/* Coins */}
-      {[54, 56.5, 59].map((x, i) => (
-        <circle key={i} cx={x} cy={44 - i * 3} r="2.2" fill="#ffd700" opacity={0.9 - i * 0.1}/>
+      {/* Ground */}
+      <rect y="28" width="124" height="44" fill="url(#rrgnd)"/>
+      {/* Rails converging to vanishing point */}
+      {[-40, -26, -8, 8, 26, 40].map((o, i) => (
+        <line key={i} x1={62 + o * 0.1} y1="28" x2={62 + o * 1.6} y2="72" stroke="#e4e8ee" strokeWidth="1" opacity="0.9"/>
       ))}
-      {/* Player */}
-      <rect x="57" y="55" width="10" height="13" rx="2" fill="#00e5ff"/>
-      <rect x="57" y="55" width="2.2" height="13" fill="#00ffff"/>
-      <rect x="60" y="56.5" width="3" height="3.5" fill="rgba(255,255,255,0.25)"/>
-      {/* Eyes */}
-      <rect x="59.5" y="57.5" width="2" height="2" fill="#fff"/>
-      <rect x="63"   y="57.5" width="2" height="2" fill="#fff"/>
+      {/* Sleepers */}
+      {[34, 41, 50, 61].map((y, i) => (
+        <g key={i}>
+          <rect x={62 - 18 - i * 9} y={y} width={14 + i * 4} height={1.5 + i * 0.6} fill="#4a3826"/>
+          <rect x={62 - 6 - i * 2}  y={y} width={12 + i * 4} height={1.5 + i * 0.6} fill="#4a3826"/>
+          <rect x={62 + 6 + i * 4}  y={y} width={14 + i * 4} height={1.5 + i * 0.6} fill="#4a3826"/>
+        </g>
+      ))}
+      {/* Train in left lane */}
+      <rect x="14" y="30" width="26" height="26" rx="3" fill="#e8a020"/>
+      <rect x="17" y="33" width="20" height="8"  rx="2" fill="#141e2a"/>
+      <rect x="14" y="43" width="26" height="3"  fill="#d23c28"/>
+      <circle cx="18" cy="50" r="1.6" fill="#ff4030"/>
+      <circle cx="36" cy="50" r="1.6" fill="#ff4030"/>
+      {/* Coins center lane */}
+      {[46, 41, 37].map((y, i) => (
+        <circle key={i} cx="62" cy={y} r={2.6 - i * 0.5} fill="#f2b418" stroke="#a86e08" strokeWidth="0.6"/>
+      ))}
+      {/* Runner (from behind) in right lane */}
+      <ellipse cx="88" cy="66" rx="6" ry="1.6" fill="rgba(0,0,0,0.25)"/>
+      <rect x="84" y="50" width="8" height="11" rx="2.5" fill="#2563eb"/>
+      <rect x="85.5" y="53" width="5" height="4.5" rx="1" fill="#cf7a1e"/>
+      <circle cx="88" cy="47.5" r="3" fill="#e8b48a"/>
+      <path d="M 85 47 A 3 3 0 0 1 91 47 Z" fill="#d92b20"/>
+      <line x1="85.5" y1="61" x2="84" y2="65" stroke="#27384f" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="90.5" y1="61" x2="91.5" y2="63.5" stroke="#27384f" strokeWidth="2" strokeLinecap="round"/>
     </svg>
   )
 }

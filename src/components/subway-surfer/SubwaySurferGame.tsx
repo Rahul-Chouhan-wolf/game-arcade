@@ -13,25 +13,25 @@ import {
   JUMP_VELOCITY, ROLL_DURATION,
 } from '@/lib/subway-surfer/physics'
 import {
-  isHit, isCoinCollected,
+  isHit, isCoinCollected, OBSTACLE_LEN,
   type ObstacleType,
 } from '@/lib/subway-surfer/collision'
 import { spawnRow as spawnRowLib, coinLane } from '@/lib/subway-surfer/spawn'
 import { calcScore, loadHigh, saveHigh } from '@/lib/subway-surfer/score'
 import { COINS_PER_ROW, COIN_SPACING, type GamePhase } from './types'
+import {
+  makeView, drawSky, drawWorld, drawTrain, drawBarrier, drawLowbar,
+  drawCoin, drawRunner, drawParticles, stepParticles,
+  drawSpeedStreaks, drawVignette,
+  LANE_W, type Particle,
+} from './scene'
 
 // ─── Pool sizes ───────────────────────────────────────────────────────────────
 const POOL_OBST = 18
 const POOL_COIN = 35
 
-// ─── Scene constants ──────────────────────────────────────────────────────────
-const HY_F  = 0.40   // horizon Y fraction
-const BY_F  = 0.93   // road bottom Y fraction
-const HHW_F = 0.022  // road half-width at horizon (fraction of W)
-const BHW_F = 0.40   // road half-width at bottom  (fraction of W)
-
 // ─── Internal types ───────────────────────────────────────────────────────────
-interface AOb { active: boolean; z: number; lane: LaneIndex; type: ObstacleType }
+interface AOb { active: boolean; z: number; lane: LaneIndex; type: ObstacleType; colorId: number }
 interface ACo { active: boolean; collected: boolean; z: number; lane: LaneIndex }
 
 interface GS {
@@ -43,6 +43,7 @@ interface GS {
   isJumping:    boolean
   isRolling:    boolean
   rollTimer:    number
+  runPhase:     number
   distance:     number
   speed:        number
   coins:        number
@@ -50,282 +51,83 @@ interface GS {
   nextSpawnAt:  number
   spawnSeed:    number
   scrollOffset: number
+  crashT:       number       // crash animation countdown; >0 = dying
+  dustT:        number       // running-dust emit timer
   obstacles:    AOb[]
   coinObjs:     ACo[]
+  particles:    Particle[]
 }
 
 function makeGS(): GS {
   return {
     phase: 'menu', lane: 1, laneX: 0, playerY: 0, playerVY: 0,
-    isJumping: false, isRolling: false, rollTimer: 0,
+    isJumping: false, isRolling: false, rollTimer: 0, runPhase: 0,
     distance: 0, speed: 18, coins: 0, score: 0,
-    nextSpawnAt: 22, spawnSeed: 0, scrollOffset: 0,
+    nextSpawnAt: 26, spawnSeed: 0, scrollOffset: 0,
+    crashT: 0, dustT: 0,
     obstacles: Array.from({ length: POOL_OBST }, () =>
-      ({ active: false, z: 0, lane: 1 as LaneIndex, type: 'barrier' as ObstacleType })),
+      ({ active: false, z: 0, lane: 1 as LaneIndex, type: 'barrier' as ObstacleType, colorId: 0 })),
     coinObjs: Array.from({ length: POOL_COIN }, () =>
       ({ active: false, collected: false, z: 0, lane: 1 as LaneIndex })),
+    particles: [],
   }
 }
 
-// ─── Projection ───────────────────────────────────────────────────────────────
-function proj(z: number, laneOff: number, W: number, H: number) {
-  const HY  = H * HY_F,  BY  = H * BY_F
-  const HHW = W * HHW_F, BHW = W * BHW_F
-  const t = Math.min(1, Math.max(0, z / SPAWN_Z))
-  const screenY = BY + (HY - BY) * t
-  const roadHW  = BHW + (HHW - BHW) * t
-  const screenX = W / 2 + laneOff * roadHW * (2 / 3)
-  const scale   = Math.max(0, 1 - t * 0.97)
-  return { screenX, screenY, scale, roadHW }
-}
-
-// ─── Draw helpers ─────────────────────────────────────────────────────────────
-function drawBackground(ctx: CanvasRenderingContext2D, W: number, H: number) {
-  const HY = H * HY_F
-  ctx.fillStyle = '#08081a'
-  ctx.fillRect(0, 0, W, H)
-
-  const sky = ctx.createLinearGradient(0, 0, 0, HY)
-  sky.addColorStop(0, '#050510')
-  sky.addColorStop(1, '#160a2c')
-  ctx.fillStyle = sky
-  ctx.fillRect(0, 0, W, HY)
-
-  for (let i = 0; i < 55; i++) {
-    const sx = ((i * 173 + 47) % 97) / 97 * W
-    const sy = ((i * 251 + 13) % 61) / 61 * HY * 0.82
-    ctx.fillStyle = `rgba(255,255,255,${0.22 + (i % 5) * 0.12})`
-    ctx.beginPath()
-    ctx.arc(sx, sy, 0.3 + (i % 4) * 0.22, 0, Math.PI * 2)
-    ctx.fill()
-  }
-
-  const hg = ctx.createLinearGradient(0, HY - 22, 0, HY + 18)
-  hg.addColorStop(0, 'transparent')
-  hg.addColorStop(0.5, 'rgba(120,50,220,0.16)')
-  hg.addColorStop(1, 'transparent')
-  ctx.fillStyle = hg
-  ctx.fillRect(0, HY - 22, W, 40)
-
-  ctx.fillStyle = '#07070f'
-  ctx.fillRect(0, HY, W, H - HY)
-}
-
-function drawRoad(ctx: CanvasRenderingContext2D, W: number, H: number, scrollOff: number) {
-  const HY  = H * HY_F,  BY  = H * BY_F
-  const HHW = W * HHW_F, BHW = W * BHW_F
-
-  // Road bottom extension to screen edge
-  ctx.fillStyle = '#141428'
-  ctx.fillRect(W / 2 - BHW, BY, BHW * 2, H - BY)
-
-  // Road surface
-  const rg = ctx.createLinearGradient(W / 2, HY, W / 2, BY)
-  rg.addColorStop(0, '#0c0c20')
-  rg.addColorStop(1, '#18183a')
-  ctx.fillStyle = rg
-  ctx.beginPath()
-  ctx.moveTo(W / 2 - HHW, HY)
-  ctx.lineTo(W / 2 + HHW, HY)
-  ctx.lineTo(W / 2 + BHW, BY)
-  ctx.lineTo(W / 2 - BHW, BY)
-  ctx.closePath()
-  ctx.fill()
-
-  // Edge glow lines
-  ctx.shadowBlur = 14
-  ctx.shadowColor = '#00e5ff'
-  ctx.strokeStyle = '#00e5ff'
-  ctx.lineWidth = 2.5
-  for (const side of [-1, 1]) {
-    ctx.beginPath()
-    ctx.moveTo(W / 2 + side * HHW, HY)
-    ctx.lineTo(W / 2 + side * BHW, BY)
-    ctx.stroke()
-  }
-  ctx.shadowBlur = 0
-
-  // Lane dividers (animated dashes)
-  for (const side of [-1, 1]) {
-    ctx.save()
-    ctx.setLineDash([22, 26])
-    ctx.lineDashOffset = -(scrollOff * 0.85) % 48
-    ctx.strokeStyle = 'rgba(0,229,255,0.28)'
-    ctx.lineWidth = 1.5
-    ctx.beginPath()
-    ctx.moveTo(W / 2 + side * HHW / 3, HY)
-    ctx.lineTo(W / 2 + side * BHW / 3, BY)
-    ctx.stroke()
-    ctx.restore()
-  }
-
-  // Subtle sheen strips
-  for (let i = 1; i <= 5; i++) {
-    const t = i / 6
-    const sy = HY + (BY - HY) * t
-    const hw = HHW + (BHW - HHW) * (1 - t)
-    const a  = 0.04 - t * 0.03
-    if (a > 0) {
-      ctx.fillStyle = `rgba(0,229,255,${a})`
-      ctx.fillRect(W / 2 - hw, sy, hw * 2, 1.5)
-    }
+function emitDust(s: GS, count: number, spread = 0.3) {
+  for (let i = 0; i < count; i++) {
+    if (s.particles.length > 90) return
+    s.particles.push({
+      xw: s.laneX * LANE_W + (Math.random() - 0.5) * spread * 2,
+      yw: 0.05, z: 0.4 + Math.random() * 0.5,
+      vx: (Math.random() - 0.5) * 1.2, vy: 0.6 + Math.random() * 1.4,
+      life: 0.35 + Math.random() * 0.3, maxLife: 0.6,
+      size: 2.5 + Math.random() * 2.5, kind: 'dust',
+    })
   }
 }
 
-function drawObstacle(ctx: CanvasRenderingContext2D, o: AOb, W: number, H: number) {
-  const { screenX, screenY, scale } = proj(o.z, LANE_OFFSETS[o.lane], W, H)
-  if (scale <= 0.01) return
-
-  const laneW    = W * BHW_F * 2 / 3
-  const ow       = laneW * 0.88 * scale
-  const barrierH = H * BY_F * 0.27
-  const oh       = (o.type === 'barrier' ? barrierH : barrierH * 0.42) * scale
-  const left     = screenX - ow / 2
-  const top      = screenY - oh
-
-  ctx.shadowBlur  = Math.max(0, 18 * scale)
-  ctx.shadowColor = o.type === 'barrier' ? '#ff3300' : '#ff8800'
-
-  const bg = ctx.createLinearGradient(left, top, left + ow, top)
-  if (o.type === 'barrier') {
-    bg.addColorStop(0, '#8b1000'); bg.addColorStop(0.5, '#cc2200'); bg.addColorStop(1, '#8b1000')
-  } else {
-    bg.addColorStop(0, '#7a4800'); bg.addColorStop(0.5, '#bb7700'); bg.addColorStop(1, '#7a4800')
+function emitSparks(s: GS, lane: LaneIndex, z: number) {
+  for (let i = 0; i < 7; i++) {
+    if (s.particles.length > 110) return
+    s.particles.push({
+      xw: lane === 1 ? 0 : (lane === 0 ? -LANE_W : LANE_W),
+      yw: 1.2, z,
+      vx: (Math.random() - 0.5) * 3, vy: 2 + Math.random() * 3,
+      life: 0.3 + Math.random() * 0.25, maxLife: 0.5,
+      size: 2 + Math.random() * 2, kind: 'spark',
+    })
   }
-  ctx.fillStyle = bg
-  ctx.fillRect(left, top, ow, oh)
-
-  ctx.shadowBlur = 0
-
-  // Top accent stripe
-  ctx.fillStyle = o.type === 'barrier' ? '#ff5533' : '#ffaa44'
-  ctx.fillRect(left, top, ow, Math.max(2, 4 * scale))
-
-  // Warning stripes
-  ctx.save()
-  ctx.beginPath()
-  ctx.rect(left, top, ow, oh)
-  ctx.clip()
-  ctx.strokeStyle = 'rgba(255,255,255,0.11)'
-  ctx.lineWidth = Math.max(1, 6 * scale)
-  const sg = Math.max(4, 18 * scale)
-  for (let x = left - oh; x < left + ow + oh; x += sg) {
-    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x + oh, top + oh); ctx.stroke()
-  }
-  ctx.restore()
-}
-
-function drawCoin(ctx: CanvasRenderingContext2D, c: ACo, W: number, H: number, t: number) {
-  const { screenX, screenY, scale } = proj(c.z, LANE_OFFSETS[c.lane], W, H)
-  if (scale <= 0.01) return
-
-  const r    = W * 0.017 * scale
-  const floY = Math.sin(t * 3 + c.z * 0.4) * 3 * scale
-  const cx   = screenX
-  const cy   = screenY - H * 0.072 * scale + floY
-
-  ctx.shadowBlur = Math.max(0, 14 * scale); ctx.shadowColor = '#ffd700'
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2)
-  ctx.fillStyle = '#ffd700'; ctx.fill()
-
-  ctx.shadowBlur = 0
-  ctx.beginPath(); ctx.arc(cx, cy, r * 0.58, 0, Math.PI * 2)
-  ctx.fillStyle = '#ffaa00'; ctx.fill()
-
-  ctx.beginPath(); ctx.arc(cx - r * 0.28, cy - r * 0.28, r * 0.3, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fill()
-}
-
-function drawPlayer(ctx: CanvasRenderingContext2D, gs: GS, W: number, H: number) {
-  const BY   = H * BY_F
-  const BHW  = W * BHW_F
-  const JSCL = (BY - H * HY_F) * 0.115
-
-  const screenX = W / 2 + gs.laneX * BHW * (2 / 3)
-  const feetY   = BY - gs.playerY * JSCL
-
-  const standH = H * 0.145, rollH = standH * 0.47
-  const standW = W * 0.068, rollW = standW * 1.5
-  const ph  = gs.isRolling ? rollH : standH
-  const pw  = gs.isRolling ? rollW : standW
-  const left = screenX - pw / 2
-  const top  = feetY - ph
-
-  // Ground shadow
-  const sa = Math.max(0, 0.32 - gs.playerY * 0.045)
-  ctx.save(); ctx.globalAlpha = sa
-  ctx.fillStyle = '#000'
-  ctx.beginPath(); ctx.ellipse(screenX, BY + 2, pw * 0.62, 4.5, 0, 0, Math.PI * 2)
-  ctx.fill(); ctx.restore()
-
-  // Body
-  ctx.shadowBlur = 22; ctx.shadowColor = '#00e5ff'
-  const bg = ctx.createLinearGradient(left, top, left + pw, feetY)
-  bg.addColorStop(0, '#33eeff'); bg.addColorStop(1, '#0077aa')
-  ctx.fillStyle = bg
-  ctx.beginPath()
-  if (typeof ctx.roundRect === 'function') ctx.roundRect(left, top, pw, ph, 5)
-  else ctx.rect(left, top, pw, ph)
-  ctx.fill()
-  ctx.shadowBlur = 0
-
-  // Left edge stripe
-  ctx.fillStyle = '#00ffff'; ctx.fillRect(left, top, 3, ph)
-
-  // Highlight
-  ctx.fillStyle = 'rgba(255,255,255,0.26)'; ctx.fillRect(left + 5, top + 4, pw * 0.32, ph * 0.36)
-
-  // Eyes (standing only)
-  if (!gs.isRolling) {
-    const ex = pw * 0.14, ey = pw * 0.14
-    ctx.fillStyle = '#fff'
-    ctx.fillRect(screenX - pw * 0.22, top + ph * 0.14, ex, ey)
-    ctx.fillRect(screenX + pw * 0.07, top + ph * 0.14, ex, ey)
-    ctx.fillStyle = '#003366'
-    ctx.fillRect(screenX - pw * 0.18, top + ph * 0.16, ex * 0.5, ey * 0.5)
-    ctx.fillRect(screenX + pw * 0.11, top + ph * 0.16, ex * 0.5, ey * 0.5)
-  }
-}
-
-function drawSpeedLines(ctx: CanvasRenderingContext2D, W: number, H: number, speed: number) {
-  const t = Math.min(1, (speed - 28) / 16)
-  ctx.save(); ctx.globalAlpha = t * 0.17; ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 1
-  const HY = H * HY_F
-  for (let i = 0; i < 14; i++) {
-    const x   = (i / 14) * W + W / 28
-    const len = (14 + (i * 7) % 24) * t
-    const y   = HY + (i * 19) % ((H - HY) * 0.55)
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - len, y); ctx.stroke()
-  }
-  ctx.restore()
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export function SubwaySurferGame() {
-  const canvasRef  = useRef<HTMLCanvasElement>(null)
-  const gsRef      = useRef<GS>(makeGS())
-  const rafRef     = useRef<number>(0)
-  const lastTRef   = useRef<number>(0)
-  const frameRef   = useRef<number>(0)
-  const timeRef    = useRef<number>(0)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const gsRef     = useRef<GS>(makeGS())
+  const rafRef    = useRef<number>(0)
+  const lastTRef  = useRef<number>(0)
+  const frameRef  = useRef<number>(0)
+  const timeRef   = useRef<number>(0)
 
   const [phase,      setPhase]      = useState<GamePhase>('menu')
   const [hudScore,   setHudScore]   = useState(0)
   const [hudCoins,   setHudCoins]   = useState(0)
   const [hudDist,    setHudDist]    = useState(0)
   const [finalScore, setFinalScore] = useState(0)
+  const [finalCoins, setFinalCoins] = useState(0)
   const [highScore,  setHighScore]  = useState(0)
 
+  useEffect(() => { setHighScore(loadHigh()) }, [])
+
   const startGame = useCallback(() => {
-    const s    = makeGS()
-    s.phase    = 'playing'
+    const s = makeGS()
+    s.phase = 'playing'
     gsRef.current = s
     setPhase('playing'); setHudScore(0); setHudCoins(0); setHudDist(0)
     lastTRef.current = 0
   }, [])
 
   const pauseGame = useCallback(() => {
-    if (gsRef.current.phase !== 'playing') return
+    if (gsRef.current.phase !== 'playing' || gsRef.current.crashT > 0) return
     gsRef.current.phase = 'paused'; setPhase('paused')
   }, [])
 
@@ -346,36 +148,36 @@ export function SubwaySurferGame() {
     resize()
     window.addEventListener('resize', resize)
 
-    // ── Spawn helper ──────────────────────────────────────────────────────────
+    // ── Spawning ──────────────────────────────────────────────────────────────
     function doSpawn(s: GS) {
       const row = spawnRowLib(s.spawnSeed)
+      let hasTrain = false
       for (const ob of row.obstacles) {
         const slot = s.obstacles.find(o => !o.active)
-        if (slot) { slot.active = true; slot.z = SPAWN_Z; slot.lane = ob.lane; slot.type = ob.type }
+        if (slot) {
+          slot.active  = true
+          slot.z       = SPAWN_Z
+          slot.lane    = ob.lane
+          slot.type    = ob.type
+          slot.colorId = (s.spawnSeed * 7 + ob.lane * 3) % 4
+          if (ob.type === 'train') hasTrain = true
+        }
       }
+      // Coin trail in the clear lane, running up to the row (never overlapping
+      // the previous row, which is at least one spawn interval closer)
       const cl = coinLane(s.spawnSeed)
       for (let i = 0; i < COINS_PER_ROW; i++) {
         const slot = s.coinObjs.find(c => !c.active)
         if (slot) {
           slot.active    = true
           slot.collected = false
-          slot.z         = SPAWN_Z - 22 - i * COIN_SPACING
+          slot.z         = SPAWN_Z - 2 - i * COIN_SPACING
           slot.lane      = cl
         }
       }
       s.spawnSeed++
-      s.nextSpawnAt += spawnIntervalAt(s.distance)
-    }
-
-    // ── Ramp-up pre-spawn ─────────────────────────────────────────────────────
-    // Ensure obstacles are already in the pipeline when game starts
-    function preSpawn(s: GS) {
-      const row = spawnRowLib(s.spawnSeed)
-      for (const ob of row.obstacles) {
-        const slot = s.obstacles.find(o => !o.active)
-        if (slot) { slot.active = true; slot.z = SPAWN_Z * 0.7; slot.lane = ob.lane; slot.type = ob.type }
-      }
-      s.spawnSeed++
+      // Trains are long — leave extra room before the next row
+      s.nextSpawnAt += spawnIntervalAt(s.distance) + (hasTrain ? OBSTACLE_LEN.train * 0.75 : 0)
     }
 
     // ── Game loop ─────────────────────────────────────────────────────────────
@@ -388,39 +190,48 @@ export function SubwaySurferGame() {
       frameRef.current++
 
       const s = gsRef.current
+      const dying = s.crashT > 0
 
-      if (s.phase === 'playing') {
+      if (s.phase === 'playing' && !dying) {
         s.speed = speedAtDistance(s.distance)
+        s.runPhase += dt * (7 + s.speed * 0.38)
 
-        // Lane lerp
+        const prevLaneX = s.laneX
         s.laneX = lerpLane(s.laneX, LANE_OFFSETS[s.lane], dt)
+        const lean = (s.laneX - prevLaneX) / Math.max(dt, 1e-4) / 9   // -1..1
 
-        // Jump
         if (s.isJumping) {
           const j = integrateJump(s.playerY, s.playerVY, dt)
+          const wasAirborne = s.playerY > 0.3
           s.playerY = j.y; s.playerVY = j.vy
-          if (j.landed) s.isJumping = false
+          if (j.landed) {
+            s.isJumping = false
+            if (wasAirborne) emitDust(s, 6, 0.5)   // landing puff
+          }
         }
-
-        // Roll
         if (s.isRolling) {
           s.rollTimer -= dt
           if (s.rollTimer <= 0) { s.isRolling = false; s.rollTimer = 0 }
+        }
+
+        // Running dust
+        s.dustT -= dt
+        if (s.dustT <= 0 && !s.isJumping) {
+          emitDust(s, 1)
+          s.dustT = 0.09
         }
 
         // Advance world
         const dz = s.speed * dt
         s.distance     += dz
         s.scrollOffset += dz
-
-        // Spawn
         if (s.distance >= s.nextSpawnAt) doSpawn(s)
 
-        // Move objects
         for (const o of s.obstacles) if (o.active) o.z -= dz
         for (const c of s.coinObjs)  if (c.active && !c.collected) c.z -= dz
+        stepParticles(s.particles, dt, dz)
 
-        // Collision — obstacle
+        // Collision
         let dead = false
         for (const o of s.obstacles) {
           if (!o.active) continue
@@ -428,61 +239,113 @@ export function SubwaySurferGame() {
         }
 
         if (dead) {
-          s.phase  = 'gameover'
-          s.score  = calcScore(s.distance, s.coins)
-          saveHigh(s.score)
-          const hi = loadHigh()
-          setPhase('gameover'); setFinalScore(s.score); setHighScore(hi)
+          s.crashT = 0.65
+          s.score = calcScore(s.distance, s.coins)
         } else {
-          // Coin collection
           for (const c of s.coinObjs) {
             if (!c.active || c.collected) continue
-            if (isCoinCollected(s.lane, s.playerY, c.lane, c.z)) { c.collected = true; s.coins++ }
+            if (isCoinCollected(s.lane, s.playerY, c.lane, c.z)) {
+              c.collected = true
+              s.coins++
+              emitSparks(s, c.lane, c.z)
+            }
           }
-          // Recycle
-          for (const o of s.obstacles) if (o.active && o.z < RECYCLE_Z) o.active = false
-          for (const c of s.coinObjs)  if (c.active && c.z < RECYCLE_Z) c.active = false
+          for (const o of s.obstacles)
+            if (o.active && o.z + OBSTACLE_LEN[o.type] < RECYCLE_Z) o.active = false
+          for (const c of s.coinObjs)
+            if (c.active && c.z < RECYCLE_Z) c.active = false
 
           s.score = calcScore(s.distance, s.coins)
           if (frameRef.current % 3 === 0) {
             setHudScore(s.score); setHudCoins(s.coins); setHudDist(Math.floor(s.distance))
           }
         }
+
+        // Stash lean for the renderer
+        ;(s as GS & { _lean?: number })._lean = Math.max(-1, Math.min(1, lean))
+      } else if (s.phase === 'playing' && dying) {
+        s.crashT -= dt
+        stepParticles(s.particles, dt, 0)
+        if (s.crashT <= 0) {
+          s.crashT = 0
+          s.phase = 'gameover'
+          saveHigh(s.score)
+          const hi = loadHigh()
+          setPhase('gameover'); setFinalScore(s.score); setFinalCoins(s.coins); setHighScore(hi)
+        }
       }
 
       // ── Draw ────────────────────────────────────────────────────────────────
       const ctx = canvas.getContext('2d')
       if (ctx) {
-        const W = canvas.width, H = canvas.height
+        const v = makeView(canvas.width, canvas.height)
+        const t = timeRef.current
 
-        drawBackground(ctx, W, H)
-        drawRoad(ctx, W, H, s.scrollOffset)
-
-        // Painter's algorithm: sort by z (far first), interleave coins + obstacles
-        const aC = s.coinObjs.filter(c => c.active && !c.collected).sort((a, b) => b.z - a.z)
-        const aO = s.obstacles.filter(o => o.active).sort((a, b) => b.z - a.z)
-        let ci = 0, oi = 0
-        while (ci < aC.length || oi < aO.length) {
-          const cz = ci < aC.length ? aC[ci].z : -Infinity
-          const oz = oi < aO.length ? aO[oi].z : -Infinity
-          if (cz >= oz) drawCoin(ctx, aC[ci++], W, H, timeRef.current)
-          else          drawObstacle(ctx, aO[oi++], W, H)
+        ctx.save()
+        // Crash shake
+        if (dying) {
+          const k = s.crashT / 0.65
+          ctx.translate((Math.random() - 0.5) * 16 * k, (Math.random() - 0.5) * 12 * k)
         }
 
-        drawPlayer(ctx, s, W, H)
-        if (s.speed > 28) drawSpeedLines(ctx, W, H, s.speed)
+        drawSky(ctx, v, t)
+        drawWorld(ctx, v, s.scrollOffset)
+
+        // Depth-sorted scene objects (far → near)
+        type Drawable = { z: number; draw: () => void }
+        const items: Drawable[] = []
+        for (const o of s.obstacles) {
+          if (!o.active) continue
+          const oo = o
+          if (oo.type === 'train')
+            items.push({ z: oo.z + OBSTACLE_LEN.train, draw: () => drawTrain(ctx, v, LANE_OFFSETS[oo.lane], oo.z, OBSTACLE_LEN.train, oo.colorId) })
+          else if (oo.type === 'barrier')
+            items.push({ z: oo.z, draw: () => drawBarrier(ctx, v, LANE_OFFSETS[oo.lane], oo.z) })
+          else
+            items.push({ z: oo.z, draw: () => drawLowbar(ctx, v, LANE_OFFSETS[oo.lane], oo.z, t) })
+        }
+        for (const c of s.coinObjs) {
+          if (!c.active || c.collected) continue
+          const cc = c
+          items.push({ z: cc.z, draw: () => drawCoin(ctx, v, LANE_OFFSETS[cc.lane], cc.z, t) })
+        }
+        items.sort((a, b) => b.z - a.z)
+        for (const it of items) it.draw()
+
+        if (s.phase !== 'menu') {
+          drawRunner(ctx, v, {
+            laneX: s.laneX,
+            playerY: s.playerY,
+            isRolling: s.isRolling,
+            isJumping: s.isJumping,
+            runPhase: s.runPhase,
+            lean: (s as GS & { _lean?: number })._lean ?? 0,
+          })
+        }
+
+        drawParticles(ctx, v, s.particles)
+        if (s.phase === 'playing' && !dying) drawSpeedStreaks(ctx, v, s.speed, t)
+        drawVignette(ctx, v)
+
+        // Crash flash
+        if (dying) {
+          ctx.fillStyle = `rgba(255,40,20,${(s.crashT / 0.65) * 0.28})`
+          ctx.fillRect(-20, -20, v.W + 40, v.H + 40)
+        }
+
+        ctx.restore()
 
         if (s.phase === 'paused') {
-          ctx.fillStyle = 'rgba(0,0,0,0.45)'
-          ctx.fillRect(0, 0, W, H)
+          ctx.fillStyle = 'rgba(8,12,24,0.55)'
+          ctx.fillRect(0, 0, v.W, v.H)
           ctx.save()
           ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
           ctx.fillStyle = '#fff'
-          ctx.font = `900 ${Math.floor(W * 0.055)}px monospace`
-          ctx.fillText('PAUSED', W / 2, H / 2)
-          ctx.fillStyle = 'rgba(255,255,255,0.45)'
-          ctx.font = `${Math.floor(W * 0.021)}px monospace`
-          ctx.fillText('Press P · ESC · or tap to resume', W / 2, H / 2 + W * 0.065)
+          ctx.font = `900 ${Math.floor(v.W * 0.05)}px system-ui, sans-serif`
+          ctx.fillText('PAUSED', v.W / 2, v.H / 2)
+          ctx.fillStyle = 'rgba(255,255,255,0.55)'
+          ctx.font = `600 ${Math.floor(v.W * 0.016)}px system-ui, sans-serif`
+          ctx.fillText('Press P · ESC · or tap to resume', v.W / 2, v.H / 2 + v.W * 0.05)
           ctx.restore()
         }
       }
@@ -495,6 +358,7 @@ export function SubwaySurferGame() {
     function onKey(e: KeyboardEvent) {
       if (e.repeat) return
       const s = gsRef.current
+      if (s.crashT > 0) return
       if (s.phase === 'menu' || s.phase === 'gameover') {
         if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); startGame() }
         return
@@ -522,6 +386,7 @@ export function SubwaySurferGame() {
     function onTouchStart(e: TouchEvent) { tx = e.touches[0].clientX; ty = e.touches[0].clientY }
     function onTouchEnd(e: TouchEvent) {
       const s   = gsRef.current
+      if (s.crashT > 0) return
       const dx  = e.changedTouches[0].clientX - tx
       const dy  = e.changedTouches[0].clientY - ty
       const adx = Math.abs(dx), ady = Math.abs(dy)
@@ -548,8 +413,6 @@ export function SubwaySurferGame() {
     window.addEventListener('keydown', onKey)
     canvas.addEventListener('touchstart', onTouchStart, { passive: true })
     canvas.addEventListener('touchend', onTouchEnd, { passive: true })
-
-    // Suppress context menu on canvas long-press
     canvas.addEventListener('contextmenu', e => e.preventDefault())
 
     return () => {
@@ -562,14 +425,14 @@ export function SubwaySurferGame() {
   }, [startGame, pauseGame, resumeGame])
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-[#08081a]">
+    <div className="relative w-full h-screen overflow-hidden bg-[#2f8fe0]">
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full touch-none" />
       <SubwayHUD
         score={hudScore} coins={hudCoins} distance={hudDist}
         phase={phase} onPause={pauseGame}
       />
       <SubwayMenu
-        phase={phase} score={finalScore} highScore={highScore}
+        phase={phase} score={finalScore} coins={finalCoins} highScore={highScore}
         onStart={startGame}
       />
     </div>
