@@ -57,9 +57,10 @@ export function isCoinCollected(
   playerY: number,
   coinLane: LaneIndex,
   coinZ: number,
+  coinY: number = COIN_Y,
 ): boolean {
   if (playerLane !== coinLane) return false
   const dz = Math.abs(coinZ)
-  const dy = Math.abs((playerY + PLAYER_STAND_H / 2) - COIN_Y)
-  return dz < COIN_COLLECT_R && dy < COIN_COLLECT_R
+  const dy = Math.abs((playerY + PLAYER_STAND_H / 2) - coinY)
+  return dz < COIN_COLLECT_R && dy < COIN_COLLECT_R * 1.3
 }

@@ -17,57 +17,58 @@ const CHUNKY: React.CSSProperties = {
 }
 
 const PANEL: React.CSSProperties = {
-  background: 'linear-gradient(180deg, rgba(24,52,110,0.94) 0%, rgba(14,30,68,0.96) 100%)',
-  border: '3px solid rgba(255,255,255,0.25)',
-  borderRadius: 22,
-  boxShadow: '0 10px 40px rgba(0,10,40,0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
-  padding: '34px 42px',
+  background: 'linear-gradient(180deg, rgba(38,116,210,0.95) 0%, rgba(16,52,120,0.97) 100%)',
+  border: '4px solid rgba(255,255,255,0.4)',
+  borderRadius: 26,
+  boxShadow: '0 14px 50px rgba(0,10,40,0.55), inset 0 2px 0 rgba(255,255,255,0.35)',
+  padding: '32px 38px',
   textAlign: 'center',
-  maxWidth: 400,
+  maxWidth: 410,
   width: '90%',
 }
 
 const TITLE: React.CSSProperties = {
   ...CHUNKY,
-  fontSize: 52,
+  fontSize: 56,
   letterSpacing: '0.01em',
   textTransform: 'uppercase',
-  lineHeight: 0.95,
+  lineHeight: 0.92,
   color: '#ffd84d',
-  textShadow: '0 4px 0 #b8761a, 0 7px 0 rgba(20,30,60,0.55), 0 10px 22px rgba(0,0,0,0.4)',
+  textShadow: '0 4px 0 #b8761a, 0 8px 0 rgba(10,24,60,0.6), 0 12px 26px rgba(0,0,0,0.45)',
   marginBottom: 6,
-  transform: 'rotate(-2deg)',
+  transform: 'rotate(-2.5deg)',
 }
 
 const SUBTITLE: React.CSSProperties = {
   ...CHUNKY,
-  color: '#8fd4ff',
+  color: '#a8e4ff',
   fontSize: 13,
-  letterSpacing: '0.22em',
+  letterSpacing: '0.24em',
   textTransform: 'uppercase',
-  marginBottom: 26,
-  textShadow: '0 2px 0 rgba(20,30,60,0.6)',
+  marginBottom: 24,
+  textShadow: '0 2px 0 rgba(10,24,60,0.6)',
 }
 
 const BTN: React.CSSProperties = {
   ...CHUNKY,
-  background: 'linear-gradient(180deg,#8ee04a 0%,#4cb820 55%,#3da214 100%)',
-  border: '3px solid rgba(255,255,255,0.55)',
+  background: 'linear-gradient(180deg,#ffe26b 0%,#ffc31e 55%,#f0a800 100%)',
+  border: '4px solid rgba(255,255,255,0.75)',
   borderRadius: 999,
-  color: '#fff',
+  color: '#7a4a00',
   cursor: 'pointer',
-  fontSize: 22,
-  letterSpacing: '0.12em',
-  padding: '14px 40px',
+  fontSize: 24,
+  letterSpacing: '0.1em',
+  padding: '15px 40px',
   textTransform: 'uppercase',
   width: '100%',
-  marginTop: 6,
-  textShadow: '0 2px 0 rgba(30,80,10,0.7)',
-  boxShadow: '0 5px 0 #2a7a0c, 0 9px 18px rgba(0,20,0,0.35)',
+  marginTop: 4,
+  textShadow: '0 1px 0 rgba(255,255,255,0.5)',
+  boxShadow: '0 6px 0 #b87a10, 0 11px 22px rgba(0,10,30,0.4)',
+  animation: 'rrPulse 1.1s ease-in-out infinite',
 }
 
 const HINT: React.CSSProperties = {
-  color: 'rgba(255,255,255,0.45)',
+  color: 'rgba(255,255,255,0.5)',
   fontSize: 11,
   letterSpacing: '0.1em',
   marginTop: 14,
@@ -83,15 +84,15 @@ const STAT_ROW: React.CSSProperties = {
 
 const STAT_BOX: React.CSSProperties = {
   flex: 1,
-  background: 'rgba(0,12,40,0.45)',
-  border: '2px solid rgba(255,255,255,0.14)',
-  borderRadius: 12,
+  background: 'rgba(0,12,40,0.5)',
+  border: '2px solid rgba(255,255,255,0.18)',
+  borderRadius: 14,
   padding: '10px 6px',
 }
 
 const STAT_LABEL: React.CSSProperties = {
   ...CHUNKY,
-  color: 'rgba(160,200,255,0.7)',
+  color: 'rgba(160,210,255,0.75)',
   fontSize: 10,
   letterSpacing: '0.2em',
   marginBottom: 4,
@@ -121,12 +122,18 @@ export function SubwayMenu({ phase, score, coins, highScore, onStart }: Props) {
   return (
     <div
       className="absolute inset-0 flex items-center justify-center z-20"
-      style={{ background: 'rgba(4,12,32,0.45)', backdropFilter: 'blur(3px)' }}
+      style={{ background: 'rgba(4,12,32,0.4)', backdropFilter: 'blur(3px)' }}
     >
+      <style>{`
+        @keyframes rrPulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.035); }
+        }
+      `}</style>
       <div style={PANEL}>
         {isGameOver ? (
           <>
-            <div style={{ ...TITLE, fontSize: 40, color: '#ff6b4a', textShadow: '0 4px 0 #98301a, 0 7px 0 rgba(20,30,60,0.55)' }}>
+            <div style={{ ...TITLE, fontSize: 42, color: '#ff6b4a', textShadow: '0 4px 0 #98301a, 0 8px 0 rgba(10,24,60,0.6)' }}>
               Wipeout!
             </div>
             <div style={SUBTITLE}>Rail Runner</div>
@@ -155,7 +162,7 @@ export function SubwayMenu({ phase, score, coins, highScore, onStart }: Props) {
             <div style={TITLE}>Rail<br />Runner</div>
             <div style={SUBTITLE}>Dodge the trains!</div>
             {highScore > 0 && (
-              <div style={{ ...CHUNKY, color: '#ffd84d', fontSize: 15, marginBottom: 18 }}>
+              <div style={{ ...CHUNKY, color: '#ffd84d', fontSize: 15, marginBottom: 16 }}>
                 Best: {highScore.toLocaleString()}
               </div>
             )}
@@ -163,8 +170,8 @@ export function SubwayMenu({ phase, score, coins, highScore, onStart }: Props) {
               style={{
                 ...STAT_BOX,
                 textAlign: 'left',
-                marginBottom: 20,
-                color: 'rgba(220,236,255,0.85)',
+                marginBottom: 14,
+                color: 'rgba(225,240,255,0.92)',
                 fontSize: 13,
                 lineHeight: 2,
                 fontFamily: 'system-ui, sans-serif',
@@ -177,13 +184,45 @@ export function SubwayMenu({ phase, score, coins, highScore, onStart }: Props) {
               <div>⬇️ &nbsp;Roll under the bars</div>
               <div>🚇 &nbsp;Never beat a train — dodge it!</div>
             </div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 8,
+                marginBottom: 18,
+              }}
+            >
+              {[
+                { icon: '🧲', label: 'Magnet' },
+                { icon: '🚀', label: 'Jetpack' },
+                { icon: '×2', label: 'Score' },
+                { icon: '👟', label: 'Jump+' },
+              ].map(p => (
+                <div
+                  key={p.label}
+                  style={{
+                    flex: 1,
+                    background: 'rgba(0,12,40,0.5)',
+                    border: '2px solid rgba(255,255,255,0.16)',
+                    borderRadius: 12,
+                    padding: '7px 2px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#ffd84d' }}>{p.icon}</div>
+                  <div style={{ color: 'rgba(190,220,255,0.8)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 700, marginTop: 2 }}>
+                    {p.label}
+                  </div>
+                </div>
+              ))}
+            </div>
           </>
         )}
         <button style={BTN} onClick={onStart}>
-          {isGameOver ? '↻ Run Again' : '▶ Play'}
+          {isGameOver ? '↻ Run Again' : '▶ Tap to Play'}
         </button>
         <div style={HINT}>
-          {isGameOver ? 'or press Space / tap' : 'or press Space / tap to start'}
+          {isGameOver ? 'or press Space / tap' : 'or press Space to start'}
         </div>
       </div>
     </div>
