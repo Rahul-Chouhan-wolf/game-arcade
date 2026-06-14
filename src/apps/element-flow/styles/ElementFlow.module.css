@@ -1,0 +1,219 @@
+/* ── Element Flow · fully scoped styles (CSS Module) ──────────────────────────
+   Class names are hashed by the module system, so nothing here leaks into the
+   rest of the site. Every element sets its own box model / typography so global
+   CSS cannot bleed in. */
+
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #05060a;
+  color: #fff;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  cursor: crosshair;
+  isolation: isolate;
+  contain: layout style paint;
+  opacity: 1;
+  transition: opacity 0.6s ease;
+}
+.root *,
+.root *::before,
+.root *::after { box-sizing: border-box; }
+
+.root.light { background: #eef1f6; }
+
+.rootFaded { opacity: 0; }
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* ── UI layer ──────────────────────────────────────────────────────────────── */
+.ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.45s ease;
+}
+.ui > * { pointer-events: auto; }
+.uiHidden { opacity: 0; pointer-events: none; }
+
+/* gear */
+.gear {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(18, 20, 30, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: transform 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+}
+.gear:hover { transform: rotate(35deg); background: rgba(30, 33, 48, 0.7); border-color: rgba(255, 255, 255, 0.3); }
+.gear:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 3px; }
+
+/* panel */
+.panel {
+  position: absolute;
+  top: 78px;
+  right: 20px;
+  width: 270px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(14, 16, 24, 0.72);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  transform: translateY(-8px) scale(0.97);
+  transform-origin: top right;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.panelOpen { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+
+.panelTitle {
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 14px;
+}
+
+.row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; }
+.rowLabel { font-size: 13px; color: rgba(255, 255, 255, 0.82); }
+
+.segmented {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  padding: 2px;
+}
+.seg {
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.seg:hover { color: #fff; }
+.segActive { background: linear-gradient(135deg, #5b8cff, #9b5bff); color: #fff; box-shadow: 0 2px 10px rgba(91, 140, 255, 0.4); }
+.seg:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 2px; }
+
+.panelDivider { height: 1px; background: rgba(255, 255, 255, 0.1); margin: 14px 0; }
+
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.action {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12.5px;
+  padding: 9px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+.action:hover { background: rgba(255, 255, 255, 0.12); transform: translateY(-1px); }
+.action:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 2px; }
+.actionWide { grid-column: 1 / -1; background: linear-gradient(135deg, rgba(91,140,255,0.25), rgba(155,91,255,0.25)); }
+
+.shortcuts {
+  display: flex; flex-wrap: wrap; gap: 6px 12px;
+  margin-top: 14px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.showHint {
+  position: absolute;
+  bottom: 22px; left: 50%;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 20, 30, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  animation: ef-pulse 2.4s ease-in-out infinite;
+}
+@keyframes ef-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.9; } }
+
+/* ── Loading screen ─────────────────────────────────────────────────────────── */
+.loading {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 45%, #11131d 0%, #05060a 70%);
+  transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+.loadingHidden { opacity: 0; visibility: hidden; pointer-events: none; }
+.loadingInner { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+
+.loadingOrb { position: relative; width: 76px; height: 76px; }
+.loadingOrb span {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  filter: blur(6px);
+  animation: ef-orb 2.6s ease-in-out infinite;
+}
+.loadingOrb span:nth-child(1) { background: radial-gradient(circle, #5b8cff, transparent 70%); animation-delay: 0s; }
+.loadingOrb span:nth-child(2) { background: radial-gradient(circle, #ff5ba3, transparent 70%); animation-delay: -0.85s; }
+.loadingOrb span:nth-child(3) { background: radial-gradient(circle, #2fe6c4, transparent 70%); animation-delay: -1.7s; }
+@keyframes ef-orb {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(10px, -8px) scale(1.15); }
+  66% { transform: translate(-9px, 9px) scale(0.9); }
+}
+
+.loadingTitle {
+  font-size: 15px;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+  padding-left: 0.42em;
+}
+.loadingBarTrack { width: 180px; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.loadingBarFill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #5b8cff, #9b5bff, #ff5ba3); transition: width 0.3s ease; }
+.loadingHint { font-size: 11px; letter-spacing: 0.1em; color: rgba(255, 255, 255, 0.4); }
+
+.error { max-width: 420px; margin: auto; padding: 40px; text-align: center; color: rgba(255,255,255,0.8); }
+.error h2 { font-size: 20px; margin: 0 0 12px; }
+.error p { font-size: 14px; line-height: 1.6; margin: 4px 0; color: rgba(255,255,255,0.55); }
+
+@media (prefers-reduced-motion: reduce) {
+  .root, .ui, .panel, .loading, .loadingBarFill { transition: none; }
+  .loadingOrb span, .showHint { animation: none; }
+  .gear:hover { transform: none; }
+}
+
+@media (max-width: 560px) {
+  .panel { width: calc(100vw - 40px); right: 20px; }
+  .gear { top: 16px; right: 16px; }
+}

@@ -35,6 +35,7 @@ interface Game {
   solarVoyagePreview?:        boolean
   slitherPreview?:            boolean
   railRunnerPreview?:         boolean
+  liquidPreview?:             boolean
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -79,6 +80,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     orbitalPreview: true,
+  },
+  {
+    id: "element-flow",
+    name: "Element Flow",
+    tagline: "Create beautiful flowing liquid art using your mouse.",
+    description: "",
+    tags: ["Fluid", "WebGL", "Art"],
+    accent: "#5b8cff",
+    href: "/element-flow",
+    isLive: true,
+    isNew: true,
+    liquidPreview: true,
   },
   {
     id: "boxle",
@@ -1010,9 +1023,44 @@ function RailRunnerMiniPreview() {
   )
 }
 
+// ── Element Flow liquid mini preview ──────────────────────────────────────────
+
+function LiquidMiniPreview() {
+  return (
+    <svg viewBox="0 0 124 72" width="124" height="72" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="lqA" cx="35%" cy="40%" r="65%">
+          <stop offset="0%" stopColor="#7ab8ff"/>
+          <stop offset="55%" stopColor="#5b8cff"/>
+          <stop offset="100%" stopColor="#3a3aff" stopOpacity="0"/>
+        </radialGradient>
+        <radialGradient id="lqB" cx="65%" cy="60%" r="60%">
+          <stop offset="0%" stopColor="#ff7ad1"/>
+          <stop offset="50%" stopColor="#c050ff"/>
+          <stop offset="100%" stopColor="#c050ff" stopOpacity="0"/>
+        </radialGradient>
+        <radialGradient id="lqC" cx="55%" cy="35%" r="55%">
+          <stop offset="0%" stopColor="#2fe6c4"/>
+          <stop offset="60%" stopColor="#19b8e0" stopOpacity="0.6"/>
+          <stop offset="100%" stopColor="#19b8e0" stopOpacity="0"/>
+        </radialGradient>
+        <filter id="lqBlur"><feGaussianBlur stdDeviation="4"/></filter>
+      </defs>
+      <rect width="124" height="72" rx="6" fill="#06070d"/>
+      <g filter="url(#lqBlur)" style={{ mixBlendMode: "screen" }}>
+        <path d="M-5 50 C 25 20 45 60 70 38 S 120 25 130 48 L 130 80 L -5 80 Z" fill="url(#lqA)"/>
+        <ellipse cx="78" cy="46" rx="40" ry="26" fill="url(#lqB)"/>
+        <ellipse cx="44" cy="30" rx="32" ry="22" fill="url(#lqC)"/>
+        <ellipse cx="100" cy="22" rx="20" ry="16" fill="#ffcf5b" opacity="0.5"/>
+      </g>
+    </svg>
+  )
+}
+
 // ── Preview dispatcher ────────────────────────────────────────────────────────
 
 function GamePreview({ game }: { game: Game }) {
+  if (game.liquidPreview)          return <LiquidMiniPreview/>
   if (game.railRunnerPreview)      return <RailRunnerMiniPreview/>
   if (game.slitherPreview)         return <SlitherMiniPreview/>
   if (game.solarVoyagePreview)     return <SolarVoyageMiniPreview/>
