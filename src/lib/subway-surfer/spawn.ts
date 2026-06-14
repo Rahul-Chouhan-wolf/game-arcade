@@ -40,11 +40,12 @@ export function spawnRow(seed: number): SpawnRow {
   const blockedLanes = lanes.slice(0, blockCount) as LaneIndex[]
   const clearLanes = lanes.slice(blockCount) as LaneIndex[]
 
-  // Pick obstacle type per blocked lane
-  const obstacles: ObstacleSpawn[] = blockedLanes.map((lane, i) => ({
-    lane,
-    type: (hash(h4 + i) % 3 === 0 ? 'lowbar' : 'barrier') as ObstacleType,
-  }))
+  // Pick obstacle type per blocked lane: 40% train, 35% barrier, 25% lowbar
+  const obstacles: ObstacleSpawn[] = blockedLanes.map((lane, i) => {
+    const r = hash(h4 + i) % 20
+    const type: ObstacleType = r < 8 ? 'train' : r < 15 ? 'barrier' : 'lowbar'
+    return { lane, type }
+  })
 
   return { obstacles, clearLanes }
 }

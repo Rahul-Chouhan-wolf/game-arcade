@@ -1,14 +1,27 @@
 import { PLAYER_STAND_H, PLAYER_ROLL_H } from './physics'
 import type { LaneIndex } from './track'
 
-export type ObstacleType = 'barrier' | 'lowbar'
+export type ObstacleType = 'train' | 'barrier' | 'lowbar'
 
-// barrier: tall wall — must jump over (height 2.4, cleared by peak jump ~3.3)
-// lowbar:  low bar  — must roll under (height 1.0) or jump (also clears it)
+// train:   full train car — cannot jump (height 3.6 > jump peak), must change lane
+// barrier: blockade — must jump over (height 2.4, cleared by peak jump ~3.3)
+// lowbar:  signal gantry — must roll under (gap below 1.0) or jump
+export const TRAIN_H   = 3.6
 export const BARRIER_H = 2.4
-export const LOWBAR_H = 1.0
+export const LOWBAR_H  = 1.0
 
-// Collision zone: how close in Z (depth) an obstacle must be to the player.
+// Height of a train roof. A well-timed jump (peak ~3.27) just clears it, so the
+// player can land and run along the top instead of always crashing.
+export const ROOF_Y = 2.9
+
+// Obstacle depth (length along Z, extending away from the player)
+export const OBSTACLE_LEN: Record<ObstacleType, number> = {
+  train:   16,
+  barrier: 0.6,
+  lowbar:  0.6,
+}
+
+// Collision zone: how close in Z (depth) an obstacle edge must be to the player.
 export const HIT_Z = 0.9
 
 // Coin collect radius in world units
@@ -24,16 +37,22 @@ export function isHit(
   obstType: ObstacleType,
 ): boolean {
   if (playerLane !== obstLane) return false
-  if (Math.abs(obstZ) > HIT_Z) return false
+
+  // Obstacle occupies [obstZ, obstZ + len]; overlap with player zone [-HIT_Z, HIT_Z]
+  const len = OBSTACLE_LEN[obstType]
+  if (obstZ > HIT_Z || obstZ + len < -HIT_Z) return false
 
   const playerH = isRolling ? PLAYER_ROLL_H : PLAYER_STAND_H
   const playerTop = playerY + playerH
 
+  if (obstType === 'train') {
+    // Trains are taller than any jump — only lane change avoids them
+    return playerY < TRAIN_H
+  }
   if (obstType === 'barrier') {
-    // Collide if player top is above ground and player Y is below barrier top
     return playerTop > 0 && playerY < BARRIER_H
   }
-  // lowbar: gap from ground to LOWBAR_H — collide if player top > LOWBAR_H (and player is on ground level)
+  // lowbar: gap from ground to LOWBAR_H — collide if player top pokes above the gap
   return playerY < LOWBAR_H && playerTop > LOWBAR_H
 }
 
@@ -42,9 +61,10 @@ export function isCoinCollected(
   playerY: number,
   coinLane: LaneIndex,
   coinZ: number,
+  coinY: number = COIN_Y,
 ): boolean {
   if (playerLane !== coinLane) return false
   const dz = Math.abs(coinZ)
-  const dy = Math.abs((playerY + PLAYER_STAND_H / 2) - COIN_Y)
-  return dz < COIN_COLLECT_R && dy < COIN_COLLECT_R
+  const dy = Math.abs((playerY + PLAYER_STAND_H / 2) - coinY)
+  return dz < COIN_COLLECT_R && dy < COIN_COLLECT_R * 1.3
 }
