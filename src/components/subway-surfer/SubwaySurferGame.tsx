@@ -9,10 +9,10 @@ import {
   type LaneIndex,
 } from '@/lib/subway-surfer/track'
 import {
-  integrateJump, lerpLane, ROLL_DURATION, PLAYER_STAND_H,
+  lerpLane, ROLL_DURATION, PLAYER_STAND_H, GRAVITY,
 } from '@/lib/subway-surfer/physics'
 import {
-  isHit, isCoinCollected, OBSTACLE_LEN, COIN_Y,
+  isHit, isCoinCollected, OBSTACLE_LEN, COIN_Y, ROOF_Y,
   type ObstacleType,
 } from '@/lib/subway-surfer/collision'
 import { spawnRow as spawnRowLib } from '@/lib/subway-surfer/spawn'
@@ -26,6 +26,7 @@ import {
 } from '@/lib/subway-surfer/powerups'
 import { type GamePhase } from './types'
 import { ThreeScene, type ObSlot, type CoinSlot, type PickSlot } from './three-scene'
+import { SoundEngine } from './audio'
 
 // ─── Pool sizes ───────────────────────────────────────────────────────────────
 const POOL_OBST = 18
@@ -44,6 +45,7 @@ interface GS {
   isJumping:    boolean
   isRolling:    boolean
   jetFalling:   boolean      // descending after jetpack — collision grace
+  onTrain:      boolean      // currently standing/running on a train roof
   rollTimer:    number
   runPhase:     number
   distance:     number
@@ -67,7 +69,7 @@ interface GS {
 function makeGS(): GS {
   return {
     phase: 'menu', lane: 1, laneX: 0, playerY: 0, playerVY: 0,
-    isJumping: false, isRolling: false, jetFalling: false,
+    isJumping: false, isRolling: false, jetFalling: false, onTrain: false,
     rollTimer: 0, runPhase: 0,
     distance: 0, speed: 18, coins: 0, score: 0, bonus: 0,
     power: makePowerupState(),
@@ -91,6 +93,7 @@ export function SubwaySurferGame() {
   const flashRef  = useRef<HTMLDivElement>(null)
   const gsRef     = useRef<GS>(makeGS())
   const sceneRef  = useRef<ThreeScene | null>(null)
+  const soundRef  = useRef<SoundEngine | null>(null)
   const rafRef    = useRef<number>(0)
   const lastTRef  = useRef<number>(0)
   const frameRef  = useRef<number>(0)
@@ -115,16 +118,20 @@ export function SubwaySurferGame() {
     setPhase('playing'); setHudScore(0); setHudCoins(0); setHudDist(0)
     setHudPowers([]); setHudMult(1)
     lastTRef.current = 0
+    const snd = (soundRef.current ??= new SoundEngine())
+    snd.init(); snd.startMusic()
   }, [])
 
   const pauseGame = useCallback(() => {
     if (gsRef.current.phase !== 'playing' || gsRef.current.crashT > 0) return
     gsRef.current.phase = 'paused'; setPhase('paused')
+    soundRef.current?.stopMusic()
   }, [])
 
   const resumeGame = useCallback(() => {
     if (gsRef.current.phase !== 'paused') return
     gsRef.current.phase = 'playing'; setPhase('playing'); lastTRef.current = 0
+    soundRef.current?.startMusic()
   }, [])
 
   useEffect(() => {
@@ -133,6 +140,7 @@ export function SubwaySurferGame() {
 
     const scene = new ThreeScene(canvas)
     sceneRef.current = scene
+    const sound = (soundRef.current ??= new SoundEngine())
 
     function resize() { scene.resize() }
     window.addEventListener('resize', resize)
@@ -218,35 +226,6 @@ export function SubwaySurferGame() {
         s.laneX = lerpLane(s.laneX, LANE_OFFSETS[s.lane], dt)
         s.lean = Math.max(-1, Math.min(1, (s.laneX - prevLaneX) / Math.max(dt, 1e-4) / 9))
 
-        // ── Vertical motion: jetpack flight > jump arc ──
-        if (isOn(s.power, 'jetpack')) {
-          s.playerY = Math.min(JETPACK_ALT, s.playerY + (JETPACK_ALT - s.playerY) * 4 * dt + 2 * dt)
-          s.isJumping = false; s.isRolling = false; s.jetFalling = false
-        } else if (hadJetpack) {
-          // Jetpack just ran out — fall with collision grace until landing
-          s.isJumping = true; s.playerVY = 0; s.jetFalling = true
-        }
-        if (s.isJumping) {
-          const j = integrateJump(s.playerY, s.playerVY, dt)
-          const wasAirborne = s.playerY > 0.3
-          s.playerY = j.y; s.playerVY = j.vy
-          if (j.landed) {
-            s.isJumping = false
-            s.jetFalling = false
-            if (wasAirborne) scene.emitDust(s.laneX, 6)
-          }
-        }
-        if (s.isRolling) {
-          s.rollTimer -= dt
-          if (s.rollTimer <= 0) { s.isRolling = false; s.rollTimer = 0 }
-        }
-
-        s.dustT -= dt
-        if (s.dustT <= 0 && !s.isJumping && s.playerY < 0.2) {
-          scene.emitDust(s.laneX)
-          s.dustT = 0.09
-        }
-
         // ── Advance world ──
         const dz = s.speed * dt
         s.distance     += dz
@@ -258,21 +237,74 @@ export function SubwaySurferGame() {
         for (const c of s.coinObjs)  if (c.active) c.z -= dz
         for (const p of s.pickups)   if (p.active) p.z -= dz
 
+        // ── Vertical floor: ground (0), or a train roof we're over and high
+        //    enough to stand on. Meeting a train while too low is a crash. ──
+        let floor = 0
+        let trainCrash = false
+        for (const o of s.obstacles) {
+          if (!o.active || o.type !== 'train' || o.lane !== s.lane) continue
+          const near = o.z, far = o.z + OBSTACLE_LEN.train
+          if (near <= 0.4 && far >= -0.4) {
+            if (s.playerY >= ROOF_Y - 0.45) floor = ROOF_Y
+            else trainCrash = true
+          }
+        }
+        const wasOnTrain = s.onTrain
+        s.onTrain = floor === ROOF_Y
+
+        // ── Vertical motion: jetpack flight > jump arc > rest on floor ──
+        if (isOn(s.power, 'jetpack')) {
+          s.playerY = Math.min(JETPACK_ALT, s.playerY + (JETPACK_ALT - s.playerY) * 4 * dt + 2 * dt)
+          s.isJumping = false; s.isRolling = false; s.jetFalling = false
+        } else {
+          if (hadJetpack) { s.isJumping = true; s.playerVY = 0; s.jetFalling = true }
+          if (s.isJumping) {
+            const wasAirborne = s.playerY > 0.3
+            s.playerVY += GRAVITY * dt
+            s.playerY  += s.playerVY * dt
+            if (s.playerY <= floor) {
+              s.playerY = floor; s.playerVY = 0
+              s.isJumping = false; s.jetFalling = false
+              if (wasAirborne) { scene.emitDust(s.laneX, 6); sound.land() }
+            }
+          } else if (s.playerY > floor + 0.02) {
+            s.isJumping = true; s.playerVY = 0     // floor dropped away → fall off
+          } else {
+            s.playerY = floor
+          }
+        }
+        if (s.onTrain && !wasOnTrain) sound.land()   // mounted a train roof
+
+        if (s.isRolling) {
+          s.rollTimer -= dt
+          if (s.rollTimer <= 0) { s.isRolling = false; s.rollTimer = 0 }
+        }
+
+        s.dustT -= dt
+        if (s.dustT <= 0 && !s.isJumping && s.playerY < ROOF_Y + 0.2) {
+          scene.emitDust(s.laneX)
+          s.dustT = 0.09
+        }
+
         // ── Collision (skipped while flying or falling from flight) ──
         let dead = false
         if (!isOn(s.power, 'jetpack') && !s.jetFalling) {
+          if (trainCrash) dead = true
           for (const o of s.obstacles) {
-            if (!o.active) continue
-            if (isHit(s.lane, s.playerY, s.isRolling, o.lane, o.z, o.type)) { dead = true; break }
+            if (dead) break
+            if (!o.active || o.type === 'train') continue
+            if (isHit(s.lane, s.playerY, s.isRolling, o.lane, o.z, o.type)) dead = true
           }
         }
 
         if (dead) {
           s.crashT = 0.65
           s.score = calcScore(s.distance, s.coins) + Math.floor(s.bonus)
+          sound.crash(); sound.stopMusic()
         } else {
           // Coins — magnet pulls them in from any lane within range
           const magnet = isOn(s.power, 'magnet')
+          let gotCoin = false
           for (const c of s.coinObjs) {
             if (!c.active) continue
             const grabbed = magnet
@@ -283,8 +315,10 @@ export function SubwaySurferGame() {
               s.coins++
               s.bonus += (mult - 1) * COIN_VALUE
               scene.emitSparks(c.lane, c.z, COIN_Y + c.yw)
+              gotCoin = true
             }
           }
+          if (gotCoin) sound.coin()
           // Pickups
           for (const p of s.pickups) {
             if (!p.active) continue
@@ -292,6 +326,7 @@ export function SubwaySurferGame() {
               p.active = false
               activate(s.power, p.kind)
               scene.emitSparks(p.lane, 0.4, 1.4, 12)
+              sound.power()
             }
           }
           // Recycle
@@ -358,10 +393,12 @@ export function SubwaySurferGame() {
       s.isJumping = true
       s.playerVY = jumpVelocityFor(s.power)
       s.isRolling = false; s.rollTimer = 0
+      sound.jump()
     }
     function tryRoll(s: GS) {
       if (s.isJumping || isOn(s.power, 'jetpack')) return
       s.isRolling = true; s.rollTimer = ROLL_DURATION
+      sound.roll()
     }
 
     // ── Input — keyboard ──────────────────────────────────────────────────────
@@ -384,6 +421,7 @@ export function SubwaySurferGame() {
           e.preventDefault(); tryJump(s); break
         case 'ArrowDown': case 's': case 'S': tryRoll(s); break
         case 'Escape': case 'p': case 'P': pauseGame(); break
+        case 'm': case 'M': sound.setMuted(!sound.muted); break
       }
     }
 
@@ -426,6 +464,8 @@ export function SubwaySurferGame() {
       canvas.removeEventListener('touchend', onTouchEnd)
       scene.dispose()
       sceneRef.current = null
+      soundRef.current?.dispose()
+      soundRef.current = null
     }
   }, [startGame, pauseGame, resumeGame])
 

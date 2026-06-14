@@ -10,6 +10,10 @@ export const TRAIN_H   = 3.6
 export const BARRIER_H = 2.4
 export const LOWBAR_H  = 1.0
 
+// Height of a train roof. A well-timed jump (peak ~3.27) just clears it, so the
+// player can land and run along the top instead of always crashing.
+export const ROOF_Y = 2.9
+
 // Obstacle depth (length along Z, extending away from the player)
 export const OBSTACLE_LEN: Record<ObstacleType, number> = {
   train:   16,

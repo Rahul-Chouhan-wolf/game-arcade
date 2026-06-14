@@ -269,9 +269,9 @@ export class ThreeScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
 
-    this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 220)
-    this.camera.position.set(0, 4.4, -6.8)
-    this.camera.lookAt(0, 1.6, 14)
+    this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 220)
+    this.camera.position.set(0, 3.7, -5.4)
+    this.camera.lookAt(0, 1.4, 12)
 
     this.scene.background = skyTexture()
     this.scene.fog = new THREE.Fog(0xffe9c4, 55, 150)
@@ -407,49 +407,64 @@ export class ThreeScene {
       const len = OBSTACLE_LEN.train
       const livery = TRAIN_LIVERIES[i % TRAIN_LIVERIES.length]
 
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(2.0, 2.9, len),
-        new THREE.MeshLambertMaterial({ color: livery.body }),
-      )
-      body.position.set(0, 0.45 + 1.45, len / 2)
+      // ── Smooth rounded body: an extruded rounded-rectangle cross-section
+      //    with bevelled end caps — soft nose/tail, no hard box edges. ──
+      const hw = 1.0, ty = 2.35, rt = 0.52, rb = 0.14
+      const prof = new THREE.Shape()
+      prof.moveTo(-hw, rb)
+      prof.lineTo(-hw, ty - rt)
+      prof.quadraticCurveTo(-hw, ty, -hw + rt, ty)
+      prof.lineTo(hw - rt, ty)
+      prof.quadraticCurveTo(hw, ty, hw, ty - rt)
+      prof.lineTo(hw, rb)
+      prof.quadraticCurveTo(hw, 0, hw - rb, 0)
+      prof.lineTo(-hw + rb, 0)
+      prof.quadraticCurveTo(-hw, 0, -hw, rb)
+      const bev = 0.34
+      const bodyGeo = new THREE.ExtrudeGeometry(prof, {
+        depth: len - bev * 2, bevelEnabled: true,
+        bevelThickness: bev, bevelSize: bev, bevelSegments: 5, curveSegments: 8,
+      })
+      const body = new THREE.Mesh(bodyGeo, new THREE.MeshLambertMaterial({ color: livery.body }))
+      body.position.set(0, 0.55, bev)   // bottom at 0.55 → rounded roof at ~2.9
       g.add(body)
 
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.18, len * 0.97), roofMat)
-      roof.position.set(0, 3.0, len / 2)
-      g.add(roof)
-      const ac = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.22, 1.6), roofMat)
-      ac.position.set(0, 3.2, len * 0.35)
+      // Roof AC unit + undercarriage
+      const ac = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.2, 1.6), roofMat)
+      ac.position.set(0, 2.9, len * 0.42)
       g.add(ac)
-
       const under = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, len * 0.96), underMat)
-      under.position.set(0, 0.45, len / 2)
+      under.position.set(0, 0.4, len / 2)
       g.add(under)
 
-      // Rear face details (toward player)
-      const win = new THREE.Mesh(new THREE.PlaneGeometry(1.35, 0.95), windowMat)
-      win.position.set(0, 2.45, -0.011)
+      // Near-face cab: big windshield, colour stripe, headlights
+      const win = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.5, 0.85),
+        new THREE.MeshBasicMaterial({ color: 0x172230 }),
+      )
+      win.position.set(0, 2.0, -0.04)
       win.rotation.y = Math.PI
       g.add(win)
       const stripe = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.96, 0.3),
+        new THREE.PlaneGeometry(2.0, 0.34),
         new THREE.MeshBasicMaterial({ color: livery.stripe }),
       )
-      stripe.position.set(0, 1.65, -0.012)
+      stripe.position.set(0, 1.2, -0.05)
       stripe.rotation.y = Math.PI
       g.add(stripe)
-      // Side window bands
-      const bandGeo = new THREE.PlaneGeometry(len * 0.92, 0.6)
+      // Side window bands (kept below the roof curve)
+      const bandGeo = new THREE.PlaneGeometry(len * 0.9, 0.55)
       for (const side of [-1, 1]) {
         const band = new THREE.Mesh(bandGeo, windowMat)
-        band.position.set(1.01 * side, 2.4, len / 2)
+        band.position.set(1.02 * side, 1.95, len / 2)
         band.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2
         g.add(band)
       }
-      // Lights (swapped by tint at update: red = parked, white = oncoming)
-      const lightGeo = new THREE.SphereGeometry(0.085, 10, 10)
+      // Lights (tinted at update: red = parked, white = oncoming)
+      const lightGeo = new THREE.SphereGeometry(0.1, 12, 12)
       for (const side of [-1, 1]) {
         const li = new THREE.Mesh(lightGeo, new THREE.MeshBasicMaterial({ color: 0xff4030 }))
-        li.position.set(0.75 * side, 1.05, -0.05)
+        li.position.set(0.72 * side, 0.95, -0.12)
         li.name = 'light'
         g.add(li)
       }
@@ -982,12 +997,13 @@ export class ThreeScene {
     const targetX = px * 0.42
     this.camera.position.x += (targetX - this.camera.position.x) * Math.min(1, dt * 6)
     const speedN = Math.min(1, Math.max(0, (rs.speed - 18) / 26))
-    const fov = 58 + speedN * 9
+    const fov = 60 + speedN * 8
     if (Math.abs(this.camera.fov - fov) > 0.1) {
       this.camera.fov = fov
       this.camera.updateProjectionMatrix()
     }
-    let cy = 4.4, cz = -6.8
+    // Rise with the player so train-roof running and jumps stay framed.
+    let cy = 3.7 + rs.playerY * 0.42, cz = -5.4
     if (rs.crashT > 0) {
       const k = rs.crashT / 0.65
       this.camera.position.x += (Math.random() - 0.5) * 0.5 * k
@@ -995,7 +1011,7 @@ export class ThreeScene {
     }
     this.camera.position.y = cy
     this.camera.position.z = cz
-    this.camera.lookAt(this.camera.position.x * 0.55, 1.6, 14)
+    this.camera.lookAt(this.camera.position.x * 0.5, 1.4 + rs.playerY * 0.55, 12)
 
     this.renderer.render(this.scene, this.camera)
   }
