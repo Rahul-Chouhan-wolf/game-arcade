@@ -1,6 +1,7 @@
 "use client"
 
 import type { GamePhase } from './types'
+import { powerupGlyph, POWERUP_TINT } from './icons'
 
 interface Props {
   phase: GamePhase
@@ -192,12 +193,12 @@ export function SubwayMenu({ phase, score, coins, highScore, onStart }: Props) {
                 marginBottom: 18,
               }}
             >
-              {[
-                { icon: '🧲', label: 'Magnet' },
-                { icon: '🚀', label: 'Jetpack' },
-                { icon: '×2', label: 'Score' },
-                { icon: '👟', label: 'Jump+' },
-              ].map(p => (
+              {([
+                { kind: 'magnet', label: 'Magnet' },
+                { kind: 'jetpack', label: 'Jetpack' },
+                { kind: 'multiplier', label: 'Score' },
+                { kind: 'sneakers', label: 'Jump+' },
+              ] as const).map(p => (
                 <div
                   key={p.label}
                   style={{
@@ -209,8 +210,16 @@ export function SubwayMenu({ phase, score, coins, highScore, onStart }: Props) {
                     textAlign: 'center',
                   }}
                 >
-                  <div style={{ fontSize: 16, fontWeight: 900, color: '#ffd84d' }}>{p.icon}</div>
-                  <div style={{ color: 'rgba(190,220,255,0.8)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 700, marginTop: 2 }}>
+                  <svg
+                    width={28}
+                    height={28}
+                    viewBox="0 0 100 100"
+                    style={{ display: 'block', margin: '0 auto' }}
+                    dangerouslySetInnerHTML={{
+                      __html: `<rect x="6" y="6" width="88" height="88" rx="20" fill="${POWERUP_TINT[p.kind]}"/>${powerupGlyph(p.kind)}`,
+                    }}
+                  />
+                  <div style={{ color: 'rgba(190,220,255,0.8)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 700, marginTop: 3 }}>
                     {p.label}
                   </div>
                 </div>

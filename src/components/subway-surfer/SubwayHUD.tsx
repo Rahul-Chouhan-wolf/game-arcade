@@ -2,6 +2,22 @@
 
 import type { GamePhase } from './types'
 import type { PowerupType } from '@/lib/subway-surfer/powerups'
+import { powerupGlyph, POWERUP_TINT } from './icons'
+
+// Reuses the exact glyph art rendered on the in-world 3D pickup chips.
+function PowerIcon({ kind, size }: { kind: PowerupType; size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      style={{ display: 'block' }}
+      dangerouslySetInnerHTML={{
+        __html: `<rect x="6" y="6" width="88" height="88" rx="20" fill="${POWERUP_TINT[kind]}"/>${powerupGlyph(kind)}`,
+      }}
+    />
+  )
+}
 
 export interface HudPowerup {
   type: PowerupType
@@ -24,11 +40,11 @@ const CHUNKY: React.CSSProperties = {
   WebkitTextStroke: '1px rgba(20,30,60,0.85)',
 }
 
-const POWER_META: Record<PowerupType, { icon: string; color: string; label: string }> = {
-  magnet:     { icon: '🧲', color: '#ff8a70', label: 'Magnet' },
-  jetpack:    { icon: '🚀', color: '#7ab8ff', label: 'Jetpack' },
-  multiplier: { icon: '×2', color: '#ffd84d', label: 'Score ×2' },
-  sneakers:   { icon: '👟', color: '#7de8a0', label: 'Sneakers' },
+const POWER_META: Record<PowerupType, { color: string; label: string }> = {
+  magnet:     { color: '#ff8a70', label: 'Magnet' },
+  jetpack:    { color: '#7ab8ff', label: 'Jetpack' },
+  multiplier: { color: '#ffd84d', label: 'Score ×2' },
+  sneakers:   { color: '#7de8a0', label: 'Sneakers' },
 }
 
 export function SubwayHUD({ score, coins, distance, powerups, multiplier, phase, onPause }: Props) {
@@ -112,9 +128,7 @@ export function SubwayHUD({ score, coins, distance, powerups, multiplier, phase,
                 boxShadow: `0 0 14px ${meta.color}55`,
               }}
             >
-              <span style={{ fontSize: 18, fontStyle: 'normal', fontWeight: 900, color: meta.color }}>
-                {meta.icon}
-              </span>
+              <PowerIcon kind={p.type} size={26} />
               <div style={{ flex: 1 }}>
                 <div
                   style={{

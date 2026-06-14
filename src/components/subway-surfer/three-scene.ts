@@ -8,8 +8,14 @@ import type { LaneIndex } from '@/lib/subway-surfer/track'
 import { LANE_OFFSETS } from '@/lib/subway-surfer/track'
 import { OBSTACLE_LEN, type ObstacleType } from '@/lib/subway-surfer/collision'
 import type { PowerupType } from '@/lib/subway-surfer/powerups'
+import { powerupChipSvg, backpackSvg } from './icons'
 
 export const LANE_W = 2.2
+
+// The chase camera looks down +z; in three.js's right-handed coordinates
+// that puts +x on the SCREEN LEFT. Game logic treats +x as right, so every
+// game-x must be mirrored at the scene boundary or the controls feel flipped.
+const GX = -1
 
 // ─── Slot mirrors of the game state (same shapes the component keeps) ────────
 export interface ObSlot { active: boolean; z: number; lane: LaneIndex; type: ObstacleType; colorId: number; vz: number }
@@ -44,6 +50,26 @@ function canvasTex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => 
   draw(c)
   const tex = new THREE.CanvasTexture(cv)
   tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+
+// Rasterise an inline SVG string onto a transparent canvas texture. The SVG is
+// drawn once the browser decodes it (a frame or two later), so meshes using the
+// texture pop in crisply without blocking scene construction.
+function svgTexture(size: number, svg: string): THREE.CanvasTexture {
+  const cv = document.createElement('canvas')
+  cv.width = size; cv.height = size
+  const ctx = cv.getContext('2d')!
+  const tex = new THREE.CanvasTexture(cv)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 4
+  const img = new Image()
+  img.onload = () => {
+    ctx.clearRect(0, 0, size, size)
+    ctx.drawImage(img, 0, 0, size, size)
+    tex.needsUpdate = true
+  }
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
   return tex
 }
 
@@ -173,42 +199,8 @@ function glowTexture(color: string): THREE.CanvasTexture {
 }
 
 function pickupTexture(kind: PowerupType): THREE.CanvasTexture {
-  const colors: Record<PowerupType, string> = {
-    magnet: '#e34234', jetpack: '#3a7bc8', multiplier: '#e8a020', sneakers: '#3aa860',
-  }
-  return canvasTex(128, 128, c => {
-    c.clearRect(0, 0, 128, 128)
-    // Chip
-    c.fillStyle = colors[kind]
-    c.beginPath()
-    c.roundRect(14, 14, 100, 100, 22)
-    c.fill()
-    c.strokeStyle = 'rgba(255,255,255,0.9)'
-    c.lineWidth = 6
-    c.stroke()
-    // Icon
-    c.strokeStyle = '#fff'; c.fillStyle = '#fff'; c.lineCap = 'round'
-    if (kind === 'magnet') {
-      c.lineWidth = 16
-      c.beginPath(); c.arc(64, 58, 26, Math.PI * 0.05, Math.PI * 0.95, false); c.stroke()
-      c.fillRect(28, 36, 18, 22); c.fillRect(82, 36, 18, 22)
-    } else if (kind === 'jetpack') {
-      c.beginPath()
-      c.moveTo(64, 26)
-      c.quadraticCurveTo(86, 56, 76, 84); c.lineTo(52, 84)
-      c.quadraticCurveTo(42, 56, 64, 26)
-      c.fill()
-      c.fillStyle = '#ffb020'
-      c.beginPath(); c.moveTo(55, 88); c.lineTo(64, 108); c.lineTo(73, 88); c.closePath(); c.fill()
-    } else if (kind === 'multiplier') {
-      c.font = '900 56px system-ui, sans-serif'
-      c.textAlign = 'center'; c.textBaseline = 'middle'
-      c.fillText('×2', 64, 66)
-    } else {
-      c.beginPath(); c.ellipse(70, 74, 30, 16, 0, 0, Math.PI * 2); c.fill()
-      c.beginPath(); c.moveTo(42, 62); c.lineTo(18, 40); c.lineTo(46, 46); c.closePath(); c.fill()
-    }
-  })
+  // Detailed inline-SVG chip art (shared with the HUD/menu via ./icons).
+  return svgTexture(256, powerupChipSvg(kind))
 }
 
 // ─── Materials (shared) ───────────────────────────────────────────────────────
@@ -561,8 +553,14 @@ export class ThreeScene {
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.55, 0.34), hoodieM)
     torso.position.y = 1.0
     this.runner.add(torso)
-    // Backpack (faces the camera at -z)
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.38, 0.16), new THREE.MeshLambertMaterial({ color: 0xcf7a1e }))
+    // Backpack — detailed SVG rear face toward the camera (-z), plain fabric
+    // on the other five faces. Box material order: +x,-x,+y,-y,+z,-z.
+    const fabric = new THREE.MeshLambertMaterial({ color: 0xcf7a1e })
+    const packBack = new THREE.MeshLambertMaterial({ map: svgTexture(256, backpackSvg()) })
+    const pack = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.4, 0.17),
+      [fabric, fabric, fabric, fabric, fabric, packBack],
+    )
     pack.position.set(0, 1.04, -0.25)
     this.runner.add(pack)
 
@@ -690,7 +688,7 @@ export class ThreeScene {
     for (let i = 0; i < count; i++) {
       this.spawnFx(
         this.dustTex,
-        new THREE.Vector3(laneX * LANE_W + (Math.random() - 0.5) * 0.5, 0.1, 0.3 + Math.random() * 0.4),
+        new THREE.Vector3(GX * laneX * LANE_W + (Math.random() - 0.5) * 0.5, 0.1, 0.3 + Math.random() * 0.4),
         new THREE.Vector3((Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 1.2, -1.5),
         0.4 + Math.random() * 0.25, 0.35 + Math.random() * 0.3, 1.5,
       )
@@ -701,7 +699,7 @@ export class ThreeScene {
     for (let i = 0; i < count; i++) {
       this.spawnFx(
         this.sparkTex,
-        new THREE.Vector3(LANE_OFFSETS[lane] * LANE_W, y, Math.max(z, 0.3)),
+        new THREE.Vector3(GX * LANE_OFFSETS[lane] * LANE_W, y, Math.max(z, 0.3)),
         new THREE.Vector3((Math.random() - 0.5) * 3, 1.5 + Math.random() * 2.5, (Math.random() - 0.5) * 2),
         0.3 + Math.random() * 0.2, 0.28 + Math.random() * 0.2, -6,
       )
@@ -711,7 +709,7 @@ export class ThreeScene {
   emitGreen(laneX: number) {
     this.spawnFx(
       this.greenTex,
-      new THREE.Vector3(laneX * LANE_W + (Math.random() - 0.5) * 0.5, 0.15 + Math.random() * 0.3, 0.3),
+      new THREE.Vector3(GX * laneX * LANE_W + (Math.random() - 0.5) * 0.5, 0.15 + Math.random() * 0.3, 0.3),
       new THREE.Vector3((Math.random() - 0.5) * 1.5, 1 + Math.random(), -1),
       0.3, 0.22, 0,
     )
@@ -765,7 +763,7 @@ export class ThreeScene {
     for (const o of rs.obstacles) {
       if (!o.active) continue
       if (o.type !== 'train' && o.z < -2.5) continue
-      const x = LANE_OFFSETS[o.lane] * LANE_W
+      const x = GX * LANE_OFFSETS[o.lane] * LANE_W
       if (o.type === 'train' && trainI < this.trainPool.length) {
         const g = this.trainPool[trainI++]
         g.visible = true
@@ -800,7 +798,7 @@ export class ThreeScene {
       const mesh = this.coinPool[coinI++]
       mesh.visible = true
       mesh.position.set(
-        LANE_OFFSETS[c.lane] * LANE_W,
+        GX * LANE_OFFSETS[c.lane] * LANE_W,
         1.25 + c.yw + Math.sin(t * 3.2 + c.z * 0.7) * 0.08,
         c.z,
       )
@@ -821,12 +819,12 @@ export class ThreeScene {
       sp.visible = true
       const pulse = 1 + Math.sin(t * 4 + p.z) * 0.08
       sp.scale.set(1.05 * pulse, 1.05 * pulse, 1)
-      sp.position.set(LANE_OFFSETS[p.lane] * LANE_W, 1.5 + Math.sin(t * 2.6 + p.z) * 0.12, p.z)
+      sp.position.set(GX * LANE_OFFSETS[p.lane] * LANE_W, 1.5 + Math.sin(t * 2.6 + p.z) * 0.12, p.z)
     }
     for (let i = pickI; i < this.pickupPool.length; i++) this.pickupPool[i].visible = false
 
     // Runner
-    const px = rs.laneX * LANE_W
+    const px = GX * rs.laneX * LANE_W
     const showRunner = rs.phase !== 'menu'
     if (rs.isRolling && showRunner) {
       this.runner.visible = false
@@ -837,7 +835,8 @@ export class ThreeScene {
       this.rollBall.visible = false
       this.runner.visible = showRunner
       this.runner.position.set(px, rs.playerY, 0)
-      this.runner.rotation.z = -rs.lean * 0.14
+      // Lean follows the mirrored screen direction
+      this.runner.rotation.z = GX * -rs.lean * 0.14
 
       const φ = rs.runPhase
       if (rs.jetpack) {
