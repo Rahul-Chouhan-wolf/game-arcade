@@ -8,7 +8,7 @@ import type { LaneIndex } from '@/lib/subway-surfer/track'
 import { LANE_OFFSETS } from '@/lib/subway-surfer/track'
 import { OBSTACLE_LEN, type ObstacleType } from '@/lib/subway-surfer/collision'
 import type { PowerupType } from '@/lib/subway-surfer/powerups'
-import { powerupChipSvg, backpackSvg } from './icons'
+import { powerupChipSvg, backpackSvg, capLogoSvg } from './icons'
 
 export const LANE_W = 2.2
 
@@ -547,61 +547,137 @@ export class ThreeScene {
     const capM = new THREE.MeshLambertMaterial({ color: CAP })
     const shoeM = new THREE.MeshLambertMaterial({ color: 0xf2f2f0 })
 
+    const ACCENT = 0xd92b20
+    const accentM = new THREE.MeshLambertMaterial({ color: ACCENT })
+    const hairM = new THREE.MeshLambertMaterial({ color: 0x3a2616 })
+    const darkM = new THREE.MeshLambertMaterial({ color: 0x2a2e35 })
+    const hoodDarkM = new THREE.MeshLambertMaterial({ color: 0x1d4fd0 })
+
     this.runner = new THREE.Group()
 
-    // Torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.55, 0.34), hoodieM)
-    torso.position.y = 1.0
+    // ── Torso: rounded capsule, slightly flattened front-to-back ──
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.27, 0.32, 6, 16), hoodieM)
+    torso.scale.set(1.05, 1, 0.8)
+    torso.position.y = 1.04
     this.runner.add(torso)
-    // Backpack — detailed SVG rear face toward the camera (-z), plain fabric
-    // on the other five faces. Box material order: +x,-x,+y,-y,+z,-z.
+    // Hood bunched at the neck
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), hoodDarkM)
+    hood.scale.set(1.25, 0.5, 1.05)
+    hood.position.set(0, 1.33, -0.02)
+    this.runner.add(hood)
+
+    // ── Backpack: SVG rear face toward camera (-z), fabric on the other faces ──
     const fabric = new THREE.MeshLambertMaterial({ color: 0xcf7a1e })
     const packBack = new THREE.MeshLambertMaterial({ map: svgTexture(256, backpackSvg()) })
     const pack = new THREE.Mesh(
-      new THREE.BoxGeometry(0.42, 0.4, 0.17),
+      new THREE.BoxGeometry(0.44, 0.42, 0.18),
       [fabric, fabric, fabric, fabric, fabric, packBack],
     )
-    pack.position.set(0, 1.04, -0.25)
+    pack.position.set(0, 1.05, -0.26)
     this.runner.add(pack)
+    // Shoulder straps over the front
+    const strapM = new THREE.MeshLambertMaterial({ color: 0x8f4e10 })
+    for (const sx of [-0.17, 0.17]) {
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.42, 0.05), strapM)
+      strap.position.set(sx, 1.12, 0.2)
+      strap.rotation.x = -0.14
+      this.runner.add(strap)
+    }
 
-    // Head + cap
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.185, 18, 14), skinM)
-    head.position.y = 1.49
+    // ── Neck + head ──
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.085, 0.11, 12), skinM)
+    neck.position.y = 1.36
+    this.runner.add(neck)
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.185, 22, 18), skinM)
+    head.position.y = 1.5
     this.runner.add(head)
+    for (const sx of [-0.18, 0.18]) {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.042, 10, 8), skinM)
+      ear.position.set(sx, 1.49, 0.01)
+      this.runner.add(ear)
+    }
+    // Hair fringe peeking out below the cap (lower hemisphere band)
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.192, 20, 14, 0, Math.PI * 2, Math.PI * 0.4, Math.PI * 0.34),
+      hairM,
+    )
+    hair.position.y = 1.5
+    this.runner.add(hair)
+
+    // ── Cap: dome + curved brim + button + back strap + emblem ──
     const capDome = new THREE.Mesh(
-      new THREE.SphereGeometry(0.195, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      new THREE.SphereGeometry(0.2, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.52),
       capM,
     )
-    capDome.position.y = 1.52
+    capDome.position.y = 1.56
     this.runner.add(capDome)
-    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.035, 0.18), capM)
-    brim.position.set(0, 1.5, 0.22)
+    const capButton = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), capM)
+    capButton.position.set(0, 1.67, 0)
+    this.runner.add(capButton)
+    const brim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.21, 0.21, 0.028, 18, 1, false, -Math.PI / 2, Math.PI),
+      capM,
+    )
+    brim.rotation.x = -0.16
+    brim.position.set(0, 1.55, 0.15)
     this.runner.add(brim)
+    const capStrap = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.05, 0.02), new THREE.MeshLambertMaterial({ color: 0xa81e14 }))
+    capStrap.position.set(0, 1.51, -0.19)
+    this.runner.add(capStrap)
+    const emblem = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.15, 0.15),
+      new THREE.MeshBasicMaterial({ map: svgTexture(128, capLogoSvg()), transparent: true }),
+    )
+    emblem.position.set(0, 1.585, -0.202)
+    emblem.rotation.y = Math.PI
+    this.runner.add(emblem)
 
-    // Limb factory: a group pivoted at the joint with a capsule hanging down
-    const limb = (len: number, r: number, mat: THREE.Material, foot?: boolean) => {
+    // ── Headphones: arc band over the cap + ear cups ──
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.205, 0.022, 8, 24, Math.PI), darkM)
+    band.position.y = 1.55
+    this.runner.add(band)
+    for (const sx of [-0.2, 0.2]) {
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.04, 14), darkM)
+      cup.rotation.z = Math.PI / 2
+      cup.position.set(sx, 1.52, 0)
+      this.runner.add(cup)
+    }
+
+    // Limb factory: a group pivoted at the joint with a capsule hanging down.
+    // 'leg' adds a two-tone trainer; 'arm' adds a skin hand.
+    const limb = (len: number, r: number, mat: THREE.Material, kind?: 'leg' | 'arm') => {
       const g = new THREE.Group()
-      const seg = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), mat)
+      const seg = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 12), mat)
       seg.position.y = -len / 2 - r
       g.add(seg)
-      if (foot) {
-        const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.1, 0.3), shoeM)
-        shoe.position.set(0, -len - r * 1.6, 0.06)
-        g.add(shoe)
+      if (kind === 'leg') {
+        const sole = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.055, 0.34), shoeM)
+        sole.position.set(0, -len - r * 1.85, 0.08)
+        g.add(sole)
+        const upper = new THREE.Mesh(new THREE.BoxGeometry(0.145, 0.1, 0.21), accentM)
+        upper.position.set(0, -len - r * 1.25, 0.005)
+        g.add(upper)
+        const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.05), shoeM)
+        tongue.position.set(0, -len - r * 0.95, 0.1)
+        g.add(tongue)
+      } else if (kind === 'arm') {
+        const hand = new THREE.Mesh(new THREE.SphereGeometry(0.068, 10, 8), skinM)
+        hand.position.y = -len - r * 1.5
+        g.add(hand)
       }
       return g
     }
 
-    this.legL = limb(0.55, 0.085, jeansM, true)
+    this.legL = limb(0.55, 0.085, jeansM, 'leg')
     this.legL.position.set(-0.15, 0.74, 0)
-    this.legR = limb(0.55, 0.085, jeansM, true)
+    this.legR = limb(0.55, 0.085, jeansM, 'leg')
     this.legR.position.set(0.15, 0.74, 0)
     this.runner.add(this.legL, this.legR)
 
-    this.armL = limb(0.46, 0.066, hoodieM)
-    this.armL.position.set(-0.34, 1.24, 0)
-    this.armR = limb(0.46, 0.066, hoodieM)
-    this.armR.position.set(0.34, 1.24, 0)
+    this.armL = limb(0.46, 0.066, hoodieM, 'arm')
+    this.armL.position.set(-0.34, 1.26, 0)
+    this.armR = limb(0.46, 0.066, hoodieM, 'arm')
+    this.armR.position.set(0.34, 1.26, 0)
     this.runner.add(this.armL, this.armR)
 
     this.scene.add(this.runner)

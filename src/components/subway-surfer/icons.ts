@@ -105,6 +105,14 @@ export function backpackSvg(): string {
   </svg>`
 }
 
+// Cap emblem — small lightning badge shown on the back of the runner's cap.
+export function capLogoSvg(): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="40" fill="#ffd84d" stroke="#fff" stroke-width="7"/>
+    <path d="M 57 16 L 32 55 L 47 55 L 41 84 L 70 43 L 53 43 Z" fill="#d92b20" stroke="#8f1810" stroke-width="3" stroke-linejoin="round"/>
+  </svg>`
+}
+
 // Full chip SVG (rounded square + glyph) for the in-world 3D pickup texture.
 export function powerupChipSvg(kind: PowerupType): string {
   const tint = POWERUP_TINT[kind]
