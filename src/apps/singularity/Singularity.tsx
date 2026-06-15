@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import styles from './styles/Singularity.module.css'
 import { Canvas } from './components/Canvas'
 import { UI } from './components/UI'
+import { BodyPicker } from './components/BodyPicker'
 import { LoadingScreen } from './components/LoadingScreen'
 import { useSimulation } from './hooks/useSimulation'
-import { DEFAULT_SETTINGS, type Settings } from './types'
+import { DEFAULT_SETTINGS, type Settings, type BodyKind } from './types'
 import { UI_AUTOHIDE_MS } from './utils/constants'
 
 export default function Singularity() {
@@ -19,7 +20,11 @@ export default function Singularity() {
     setSettings(prev => { const next = { ...prev, ...p }; settingsRef.current = next; return next })
   }, [])
 
-  const { ready, error, actionsRef } = useSimulation(canvasRef, settingsRef)
+  const [spawnKind, setSpawnKind] = useState<BodyKind>('blackhole')
+  const spawnKindRef = useRef<BodyKind>('blackhole')
+  const selectKind = useCallback((k: BodyKind) => { setSpawnKind(k); spawnKindRef.current = k }, [])
+
+  const { ready, error, actionsRef } = useSimulation(canvasRef, settingsRef, spawnKindRef)
 
   const [panelOpen, setPanelOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -125,6 +130,8 @@ export default function Singularity() {
         onScreenshot={() => actionsRef.current?.screenshot()}
         onFullscreen={toggleFullscreen}
       />
+
+      <BodyPicker selected={spawnKind} visible={uiVisible} onSelect={selectKind} />
 
       {settings.uiHidden && (
         <button type="button" className={styles.showHint} onClick={() => patch({ uiHidden: false })}>

@@ -1,7 +1,7 @@
 // ─── Singularity · GLSL (WebGL2 / GLSL ES 3.00) ──────────────────────────────
 // Original shaders: GPU particle integration + layered cosmic rendering + post.
 
-export const MAX_BH = 6
+export const MAX_BH = 12
 
 export const QUAD_VS = /* glsl */ `#version 300 es
 precision highp float;
@@ -270,6 +270,93 @@ void main(){
   float vig = smoothstep(1.25, 0.35, length((uv-0.5)*2.0));
   col *= mix(0.55, 1.0, vig);
 
+  frag = vec4(col, 1.0);
+}`
+
+// ── Stars / suns / white-holes: glowing orb + corona (uses BH_VS) ───────────
+export const GLOW_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vLocal;
+out vec4 frag;
+uniform vec3 uColor;
+uniform float uTime;
+uniform float uSpin;
+uniform float uRays;       // 1 = white-hole emission spokes
+uniform float uCoreFrac;
+${NOISE}
+void main(){
+  float r = length(vLocal);
+  if(r > 1.0) discard;
+  float ang = atan(vLocal.y, vLocal.x);
+  float core = smoothstep(uCoreFrac, 0.0, r);
+  float glow = pow(smoothstep(1.0, 0.0, r), 2.0);
+  float surf = 0.75 + 0.25 * fbm(vLocal * 4.0 + vec2(uTime * 0.3 + uSpin));
+  float rays = 0.0;
+  if(uRays > 0.5){
+    rays = pow(0.5 + 0.5 * sin(ang * 12.0 - uSpin * 3.0), 6.0) * smoothstep(1.0, 0.15, r) * 0.9;
+  }
+  vec3 col = uColor * (core * 2.4 + glow * 1.1 * surf + rays);
+  col += vec3(1.0) * core * 0.55;               // white-hot centre
+  float a = max(core, glow * 0.8) + rays * 0.5;
+  frag = vec4(col, a);
+}`
+
+// ── Planet: small lit body with terminator + atmosphere rim (uses BH_VS) ────
+export const PLANET_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vLocal;
+out vec4 frag;
+uniform vec3 uColor;
+uniform float uSpin;
+void main(){
+  float r = length(vLocal);
+  if(r > 1.0) discard;
+  float disc = smoothstep(1.0, 0.9, r);
+  float z = sqrt(max(0.0, 1.0 - r * r));
+  vec3 n = normalize(vec3(vLocal, z));
+  float lit = clamp(dot(normalize(vec3(-0.55, 0.6, 0.6)), n), 0.0, 1.0);
+  float band = 0.5 + 0.5 * sin(vLocal.x * 5.0 + uSpin);
+  vec3 col = uColor * (0.12 + lit * 1.15) * (0.85 + 0.15 * band);
+  float rim = smoothstep(0.78, 1.0, r) * smoothstep(1.0, 0.88, r);
+  col += uColor * rim * 2.2;
+  frag = vec4(col * disc, disc);
+}`
+
+// ── Galaxy background: colourful rotating spiral (opaque base layer) ─────────
+export const GALAXY_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform float uTime;
+uniform float uAspect;
+${NOISE}
+void main(){
+  vec2 p = (vUv - 0.5) * vec2(uAspect, 1.0) * 2.6;
+  float r = length(p);
+  float a = atan(p.y, p.x);
+  float t = uTime * 0.012;
+  float spiral = sin(2.0 * (a + log(r + 0.25) * 2.3) + t * 3.0);
+  float arm = smoothstep(0.05, 0.9, spiral) * smoothstep(2.4, 0.15, r);
+  float dust = fbm(p * 1.4 + vec2(t, -t));
+  float dust2 = fbm(p * 2.7 - vec2(t * 0.6, t));
+  float dust3 = fbm(p * 0.8 + vec2(-t * 0.4, t * 0.5));
+  vec3 core = vec3(1.0, 0.85, 0.55) * smoothstep(0.55, 0.0, r);
+
+  // multi-hue nebula arms — azure → magenta → teal → amber, never muddy
+  vec3 cAzure  = vec3(0.20, 0.50, 1.00);
+  vec3 cMagenta= vec3(0.90, 0.25, 0.95);
+  vec3 cTeal   = vec3(0.15, 0.95, 0.85);
+  vec3 cAmber  = vec3(1.00, 0.55, 0.25);
+  vec3 armCol = mix(cAzure, cMagenta, smoothstep(0.25, 0.85, dust));
+  armCol = mix(armCol, cTeal, smoothstep(0.4, 0.95, dust2) * 0.7);
+  armCol = mix(armCol, cAmber, smoothstep(0.55, 1.0, dust * dust3) * 0.6);
+
+  vec3 col = core * 0.6 + armCol * arm * (0.55 + 0.7 * dust);
+  // glowing nebula clumps between the arms
+  col += cMagenta * pow(dust2, 3.0) * 0.25 * smoothstep(2.4, 0.2, r);
+  col += cTeal * pow(dust3, 3.0) * 0.2 * smoothstep(2.4, 0.2, r);
+  col += vec3(0.015, 0.015, 0.05);              // deep-space base
+  col *= 0.5 + 0.7 * dust;
   frag = vec4(col, 1.0);
 }`
 

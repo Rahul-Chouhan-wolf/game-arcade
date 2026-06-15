@@ -7,14 +7,14 @@ import {
 } from '../utils/webgl'
 import { ParticleSystem } from '../simulation/particles'
 import {
-  QUAD_VS, PARTICLE_VS, PARTICLE_FS, STAR_VS, STAR_FS, NEBULA_FS,
-  BH_VS, BH_FS, BURST_VS, BURST_FS, BLOOM_PREFILTER_FS, BLOOM_BLUR_FS, COMPOSITE_FS, COPY_FS,
+  QUAD_VS, PARTICLE_VS, PARTICLE_FS, STAR_VS, STAR_FS, GALAXY_FS,
+  BH_VS, BH_FS, GLOW_FS, PLANET_FS, BURST_VS, BURST_FS,
+  BLOOM_PREFILTER_FS, BLOOM_BLUR_FS, COMPOSITE_FS, COPY_FS,
 } from './shaders/glsl'
-import type { NebulaBurst } from '../types'
-import { STARFIELD_COUNT, BLOOM_THRESHOLD, BLOOM_INTENSITY } from '../utils/constants'
+import type { NebulaBurst, Body } from '../types'
+import { STARFIELD_COUNT, BLOOM_THRESHOLD, BLOOM_INTENSITY, BODY_CONFIG } from '../utils/constants'
 import { mulberry32, massColor } from '../utils/math'
-import { packHoles } from '../simulation/blackhole'
-import type { BlackHole } from '../types'
+import { packLensing, eventHorizon, bodyRadius } from '../simulation/blackhole'
 
 export class Renderer {
   gl: WebGL2RenderingContext
@@ -25,7 +25,9 @@ export class Renderer {
   private quad: ReturnType<typeof createQuad>
   private progParticle: Program
   private progStar: Program
-  private progNebula: Program
+  private progGalaxy: Program
+  private progGlow: Program
+  private progPlanet: Program
   private progBH: Program
   private progBurst: Program
   private progPrefilter: Program
@@ -52,7 +54,9 @@ export class Renderer {
 
     this.progParticle = new Program(gl, PARTICLE_VS, PARTICLE_FS)
     this.progStar = new Program(gl, STAR_VS, STAR_FS)
-    this.progNebula = new Program(gl, QUAD_VS, NEBULA_FS)
+    this.progGalaxy = new Program(gl, QUAD_VS, GALAXY_FS)
+    this.progGlow = new Program(gl, BH_VS, GLOW_FS)
+    this.progPlanet = new Program(gl, BH_VS, PLANET_FS)
     this.progBH = new Program(gl, BH_VS, BH_FS)
     this.progBurst = new Program(gl, BURST_VS, BURST_FS)
     this.progPrefilter = new Program(gl, QUAD_VS, BLOOM_PREFILTER_FS)
@@ -109,8 +113,8 @@ export class Renderer {
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
 
-    // Layer 3: nebula (opaque base)
-    let p = this.progNebula.use(gl)
+    // Layer 3: galaxy (opaque base)
+    let p = this.progGalaxy.use(gl)
     gl.uniform1f(p.uniforms.uTime, time)
     gl.uniform1f(p.uniforms.uAspect, this.aspect)
     gl.disable(gl.BLEND)
@@ -159,20 +163,42 @@ export class Renderer {
       }
     }
 
-    // Accretion disks + event horizons
-    p = this.progBH.use(gl)
+    // Layer 5/6: bodies, rendered per kind (all use the BH_VS unit quad)
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bhQuadBuf)
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
     for (const b of holes) {
-      const col = massColor(b.mass)
-      const horizonClip = b.w_horizon ?? 0
-      const radius = Math.max(0.04, horizonClip * 3.4)
-      gl.uniform2f(p.uniforms.uCenter, b.x, b.y)
-      gl.uniform1f(p.uniforms.uRadius, radius)
-      gl.uniform3f(p.uniforms.uColor, col[0], col[1], col[2])
-      gl.uniform1f(p.uniforms.uSpin, b.spin)
-      gl.uniform1f(p.uniforms.uHorizonFrac, Math.min(0.9, horizonClip / radius))
-      gl.drawArrays(gl.TRIANGLES, 0, 3)
+      const cfg = BODY_CONFIG[b.kind]
+      if (b.kind === 'blackhole') {
+        const col = massColor(b.mass)
+        const horizonClip = b.w_horizon ?? eventHorizon(b)
+        const radius = Math.max(0.04, horizonClip * 3.4)
+        p = this.progBH.use(gl)
+        gl.uniform2f(p.uniforms.uCenter, b.x, b.y)
+        gl.uniform1f(p.uniforms.uRadius, radius)
+        gl.uniform3f(p.uniforms.uColor, col[0], col[1], col[2])
+        gl.uniform1f(p.uniforms.uSpin, b.spin)
+        gl.uniform1f(p.uniforms.uHorizonFrac, Math.min(0.9, horizonClip / radius))
+        gl.drawArrays(gl.TRIANGLES, 0, 3)
+      } else if (b.kind === 'planet') {
+        p = this.progPlanet.use(gl)
+        gl.uniform2f(p.uniforms.uCenter, b.x, b.y)
+        gl.uniform1f(p.uniforms.uRadius, bodyRadius(b) * 1.15)
+        gl.uniform3f(p.uniforms.uColor, cfg.color[0], cfg.color[1], cfg.color[2])
+        gl.uniform1f(p.uniforms.uSpin, b.spin)
+        gl.drawArrays(gl.TRIANGLES, 0, 3)
+      } else {
+        // star / whitestar / sun / whitehole → glowing orb + corona
+        const coreFrac = b.kind === 'sun' ? 0.4 : b.kind === 'whitehole' ? 0.24 : 0.3
+        p = this.progGlow.use(gl)
+        gl.uniform2f(p.uniforms.uCenter, b.x, b.y)
+        gl.uniform1f(p.uniforms.uRadius, bodyRadius(b) * 4.2)
+        gl.uniform3f(p.uniforms.uColor, cfg.color[0], cfg.color[1], cfg.color[2])
+        gl.uniform1f(p.uniforms.uTime, time)
+        gl.uniform1f(p.uniforms.uSpin, b.spin)
+        gl.uniform1f(p.uniforms.uRays, cfg.rays ? 1 : 0)
+        gl.uniform1f(p.uniforms.uCoreFrac, coreFrac)
+        gl.drawArrays(gl.TRIANGLES, 0, 3)
+      }
     }
     gl.disable(gl.BLEND)
   }
@@ -202,7 +228,7 @@ export class Renderer {
     this.renderScene(holes, bursts, time, drift)
     if (this.bloom) this.renderBloom()
 
-    const { data, count } = packHoles(holes, this.aspect)
+    const { data, count } = packLensing(holes, this.aspect, 6)
     const p = this.progComposite.use(gl)
     gl.uniform1i(p.uniforms.uScene, this.scene.attach(0))
     gl.uniform1i(p.uniforms.uBloom, (this.bloom ? this.bloomA : this.scene).attach(1))
@@ -223,12 +249,12 @@ export class Renderer {
     deleteFBO(gl, this.scene); deleteFBO(gl, this.bloomA); deleteFBO(gl, this.bloomB)
     gl.deleteBuffer(this.starBuf); gl.deleteBuffer(this.bhQuadBuf); gl.deleteBuffer(this.quad.buffer)
     gl.deleteVertexArray(this.particleVAO)
-    for (const pr of [this.progParticle, this.progStar, this.progNebula, this.progBH, this.progBurst,
-      this.progPrefilter, this.progBlur, this.progComposite, this.progCopy]) {
+    for (const pr of [this.progParticle, this.progStar, this.progGalaxy, this.progBH, this.progGlow,
+      this.progPlanet, this.progBurst, this.progPrefilter, this.progBlur, this.progComposite, this.progCopy]) {
       gl.deleteProgram(pr.program)
     }
   }
 }
 
 // Black hole augmented with its clip-space horizon radius for rendering.
-export type HoleRender = BlackHole & { w_horizon?: number }
+export type HoleRender = Body & { w_horizon?: number }

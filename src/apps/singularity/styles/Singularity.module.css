@@ -114,6 +114,50 @@
   font-size: 10.5px; color: rgba(170, 190, 255, 0.4);
 }
 
+/* object picker */
+.picker {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(140, 170, 255, 0.16);
+  border-radius: 16px;
+  background: rgba(8, 11, 26, 0.66);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 16px 50px rgba(0, 0, 10, 0.5);
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 64px;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: rgba(210, 222, 255, 0.6);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  flex: 0 0 auto;
+}
+.pick:hover { background: rgba(255, 255, 255, 0.06); color: #fff; transform: translateY(-2px); }
+.pick:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 2px; }
+.pickActive {
+  background: rgba(120, 150, 255, 0.16);
+  border-color: rgba(150, 180, 255, 0.5);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(120, 150, 255, 0.3);
+}
+.pickLabel { font-size: 10px; letter-spacing: 0.02em; white-space: nowrap; }
+
 .showHint {
   position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
   border: 1px solid rgba(150,170,255,0.16); background: rgba(10,14,30,0.5);

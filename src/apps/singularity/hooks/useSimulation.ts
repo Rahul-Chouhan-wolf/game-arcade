@@ -2,23 +2,34 @@ import { useEffect, useRef, useState } from 'react'
 import { Renderer, type HoleRender } from '../render/renderer'
 import { usePointer, type PointerHandlers } from './usePointer'
 import {
-  spawnBlackHole, stepBlackHoles, pruneDead, horizonOf,
+  spawnBody, stepBodies, pruneDead, eventHorizon, packGravity, type BurstReq,
 } from '../simulation/blackhole'
 import { PARTICLE_SIDES, BH_FEED_PER_PARTICLE } from '../utils/constants'
 import { hsv } from '../utils/math'
-import type { BlackHole, Settings, NebulaBurst } from '../types'
+import type { Body, BodyKind, Settings, NebulaBurst } from '../types'
 
-// A merge/collapse paints a colourful expanding nebula. Three vivid, spread-out
-// hues keep it luminous and never muddy.
-function makeBurst(x: number, y: number, mass: number): NebulaBurst {
+const MAX_SOURCES = 12
+
+// Merges/collapses/tidal-disruptions paint a colourful expanding nebula.
+// Three vivid, spread-out hues keep it luminous and never muddy.
+function makeBurst(req: BurstReq): NebulaBurst {
   const base = Math.random()
-  const m = Math.min(mass, 3.2)
+  const m = Math.min(req.mass, 3.2)
+  const big = req.kind === 'annihilation' || req.kind === 'collapse'
+  let colors: NebulaBurst['colors']
+  if (req.kind === 'tidal' && req.color) {
+    colors = [req.color, hsv(base, 0.85, 1), hsv(base + 0.3, 0.9, 1)]
+  } else if (big) {
+    colors = [[1, 1, 1], hsv(base, 0.7, 1), hsv(base + 0.5, 0.85, 1)]
+  } else {
+    colors = [hsv(base, 0.85, 1), hsv(base + 0.16, 0.8, 1), hsv(base + 0.42, 0.9, 1)]
+  }
   return {
-    x, y, age: 0,
-    life: 3.4 + m * 0.7,
-    radius: 0.22 + m * 0.16,
+    x: req.x, y: req.y, age: 0,
+    life: (big ? 4.6 : 3.4) + m * 0.7,
+    radius: (big ? 0.42 : 0.22) + m * 0.16,
     seed: Math.random() * 10,
-    colors: [hsv(base, 0.85, 1), hsv(base + 0.16, 0.8, 1), hsv(base + 0.42, 0.9, 1)],
+    colors,
   }
 }
 
@@ -31,6 +42,7 @@ export interface SimActions {
 export function useSimulation(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
   settingsRef: React.RefObject<Settings>,
+  spawnKindRef: React.RefObject<BodyKind>,
 ) {
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,28 +67,29 @@ export function useSimulation(
     let seed = (Math.random() * 1e9) | 0
     renderer.seed(seed)
 
-    const holes: BlackHole[] = []
+    const bodies: Body[] = []
     const bursts: NebulaBurst[] = []
     let chaos = 0
     const drift: [number, number] = [0, 0]
 
-    // Pointer → black-hole control
+    // Pointer → spawn the currently selected body kind and control it
     handlersRef.current = {
-      spawn(x, y) { const b = spawnBlackHole(x, y); holes.push(b); return b.id },
+      spawn(x, y) { const b = spawnBody(spawnKindRef.current, x, y); bodies.push(b); return b.id },
       drag(id, x, y, speed) {
-        const b = holes.find(h => h.id === id)
+        const b = bodies.find(h => h.id === id)
         if (!b) return
         b.x = x; b.y = y
-        chaos = Math.min(1.5, chaos + speed * 0.04)
-        // feeding scales with how fast you drag through matter
-        b.mass += BH_FEED_PER_PARTICLE * speed * 60
+        if (b.kind === 'blackhole') {
+          chaos = Math.min(1.5, chaos + speed * 0.04)
+          b.mass += BH_FEED_PER_PARTICLE * speed * 60     // feed while dragging
+        }
       },
-      release(id) { const b = holes.find(h => h.id === id); if (b) b.growing = false },
+      release(id) { const b = bodies.find(h => h.id === id); if (b) b.growing = false },
     }
 
     actionsRef.current = {
-      reset(s) { holes.length = 0; seed = s ?? ((Math.random() * 1e9) | 0); renderer.seed(seed) },
-      randomSeed() { holes.length = 0; seed = (Math.random() * 1e9) | 0; renderer.seed(seed) },
+      reset(s) { bodies.length = 0; bursts.length = 0; seed = s ?? ((Math.random() * 1e9) | 0); renderer.seed(seed) },
+      randomSeed() { bodies.length = 0; bursts.length = 0; seed = (Math.random() * 1e9) | 0; renderer.seed(seed) },
       screenshot() {
         const url = renderer.screenshot()
         const a = document.createElement('a')
@@ -104,44 +117,29 @@ export function useSimulation(
       if (resizePending) { renderer.resize(); resizePending = false }
 
       chaos *= 0.94
-      // gentle camera drift for a living, cinematic feel
-      drift[0] = Math.sin(time * 0.03) * 0.02
+      drift[0] = Math.sin(time * 0.03) * 0.02      // gentle cinematic camera drift
       drift[1] = Math.cos(time * 0.021) * 0.02
 
-      // age + prune nebula bursts (they keep evolving even when paused-idle)
+      // age + prune nebula bursts (keep evolving even while idle)
       for (let i = bursts.length - 1; i >= 0; i--) {
         bursts[i].age += dt
         if (bursts[i].age >= bursts[i].life) bursts.splice(i, 1)
       }
 
       if (!s.paused && !prefersReduced) {
-        const { merged, exploded } = stepBlackHoles(holes, dt)
-        for (const m of merged) if (bursts.length < 12) bursts.push(makeBurst(m.x, m.y, m.mass))
-        for (const e of exploded) if (bursts.length < 12) bursts.push(makeBurst(e.x, e.y, e.mass * 1.4))
-        const live = pruneDead(holes)
-        holes.length = 0; holes.push(...live)
+        const { bursts: events } = stepBodies(bodies, dt)
+        for (const ev of events) if (bursts.length < 14) bursts.push(makeBurst(ev))
+        const live = pruneDead(bodies)
+        bodies.length = 0; bodies.push(...live)
+        const grav = packGravity(bodies, renderer.aspect, MAX_SOURCES)
         renderer.particles.step({
-          bhData: pack(holes).data,
-          bhCount: pack(holes).count,
+          bhData: grav.data, bhCount: grav.count,
           dt, time, aspect: renderer.aspect, chaos,
         })
       }
 
-      const render: HoleRender[] = holes.map(b => ({ ...b, w_horizon: horizonOf(b) }))
+      const render: HoleRender[] = bodies.map(b => ({ ...b, w_horizon: eventHorizon(b) }))
       renderer.render(render, bursts, time, drift)
-    }
-
-    // local packer (avoids importing for the hot path twice)
-    function pack(hs: BlackHole[]) {
-      const data = new Float32Array(24)
-      const count = Math.min(hs.length, 6)
-      for (let i = 0; i < count; i++) {
-        data[i * 4] = hs[i].x * renderer.aspect
-        data[i * 4 + 1] = hs[i].y
-        data[i * 4 + 2] = hs[i].mass
-        data[i * 4 + 3] = horizonOf(hs[i])
-      }
-      return { data, count }
     }
 
     raf = requestAnimationFrame(frame)
@@ -151,14 +149,19 @@ export function useSimulation(
     const onVis = () => { visible = document.visibilityState === 'visible'; if (visible) last = performance.now() }
     window.addEventListener('resize', onResize)
     document.addEventListener('visibilitychange', onVis)
+    // ResizeObserver catches the initial layout + any container change reliably
+    // (canvas.clientWidth can be stale on the first frame).
+    const ro = new ResizeObserver(() => { resizePending = true })
+    ro.observe(canvas)
 
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
       document.removeEventListener('visibilitychange', onVis)
+      ro.disconnect()
       renderer.dispose()
     }
-  }, [canvasRef, settingsRef, density])
+  }, [canvasRef, settingsRef, spawnKindRef, density])
 
   usePointer(canvasRef, handlersRef)
 

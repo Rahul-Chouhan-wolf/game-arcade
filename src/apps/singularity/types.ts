@@ -4,17 +4,30 @@ import type { Level } from './utils/math'
 
 export type { Level }
 
-export interface BlackHole {
+// Spawnable cosmic objects. Each interacts with black holes differently.
+export type BodyKind =
+  | 'blackhole'   // gravity well, consumes matter, grows while held
+  | 'star'        // warm sun-like star, attracts + orbits
+  | 'whitestar'   // hot blue-white star, brighter
+  | 'sun'         // large radiant star with corona
+  | 'planet'      // small body, easily captured into orbit
+  | 'whitehole'   // repels matter, ejects light; annihilates a black hole
+
+export interface Body {
   id: number
+  kind: BodyKind
   x: number          // clip space -1..1 (aspect-corrected on x)
   y: number
   vx: number
   vy: number
   mass: number
-  growing: boolean   // mouse held → accreting
-  spin: number       // accumulated disk rotation
+  growing: boolean   // mouse held → black holes accrete
+  spin: number       // accumulated disk / surface rotation
   dead: boolean
 }
+
+/** @deprecated alias kept for older imports */
+export type BlackHole = Body
 
 export interface Settings {
   bloom: boolean
