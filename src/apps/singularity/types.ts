@@ -1,0 +1,37 @@
+// ─── Singularity · shared types ──────────────────────────────────────────────
+
+import type { Level } from './utils/math'
+
+export type { Level }
+
+export interface BlackHole {
+  id: number
+  x: number          // clip space -1..1 (aspect-corrected on x)
+  y: number
+  vx: number
+  vy: number
+  mass: number
+  growing: boolean   // mouse held → accreting
+  spin: number       // accumulated disk rotation
+  dead: boolean
+}
+
+export interface Settings {
+  bloom: boolean
+  lensing: boolean
+  density: Level
+  audio: boolean
+  uiHidden: boolean
+  paused: boolean
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  bloom: true,
+  lensing: true,
+  density: 'medium',
+  audio: false,
+  uiHidden: false,
+  paused: false,
+}
+
+export interface PointerSample { x: number; y: number; t: number }
