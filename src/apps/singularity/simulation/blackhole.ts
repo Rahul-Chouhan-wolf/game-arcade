@@ -20,8 +20,13 @@ export function horizonOf(bh: BlackHole) { return horizonRadius(bh.mass, EVENT_H
  * integrate motion, merge overlapping pairs, and flag white-hole collapses.
  * Returns ids that just hit max mass (→ supernova ejection burst).
  */
-export function stepBlackHoles(holes: BlackHole[], dt: number): { exploded: BlackHole[] } {
+export interface MergeEvent { x: number; y: number; mass: number }
+
+export function stepBlackHoles(
+  holes: BlackHole[], dt: number,
+): { exploded: BlackHole[]; merged: MergeEvent[] } {
   const exploded: BlackHole[] = []
+  const merged: MergeEvent[] = []
 
   for (const b of holes) {
     if (b.growing) b.mass = Math.min(BH_MAX_MASS + 0.001, b.mass + BH_GROW_RATE * dt)
@@ -66,6 +71,7 @@ export function stepBlackHoles(holes: BlackHole[], dt: number): { exploded: Blac
         a.mass = m
         a.growing = a.growing || b.growing
         b.dead = true
+        merged.push({ x: a.x, y: a.y, mass: m })
       }
     }
   }
@@ -75,7 +81,7 @@ export function stepBlackHoles(holes: BlackHole[], dt: number): { exploded: Blac
     if (!b.dead && b.mass >= BH_MAX_MASS) { exploded.push({ ...b }); b.dead = true }
   }
 
-  return { exploded }
+  return { exploded, merged }
 }
 
 export function pruneDead(holes: BlackHole[]): BlackHole[] {

@@ -5,7 +5,22 @@ import {
   spawnBlackHole, stepBlackHoles, pruneDead, horizonOf,
 } from '../simulation/blackhole'
 import { PARTICLE_SIDES, BH_FEED_PER_PARTICLE } from '../utils/constants'
-import type { BlackHole, Settings } from '../types'
+import { hsv } from '../utils/math'
+import type { BlackHole, Settings, NebulaBurst } from '../types'
+
+// A merge/collapse paints a colourful expanding nebula. Three vivid, spread-out
+// hues keep it luminous and never muddy.
+function makeBurst(x: number, y: number, mass: number): NebulaBurst {
+  const base = Math.random()
+  const m = Math.min(mass, 3.2)
+  return {
+    x, y, age: 0,
+    life: 3.4 + m * 0.7,
+    radius: 0.22 + m * 0.16,
+    seed: Math.random() * 10,
+    colors: [hsv(base, 0.85, 1), hsv(base + 0.16, 0.8, 1), hsv(base + 0.42, 0.9, 1)],
+  }
+}
 
 export interface SimActions {
   reset(seed?: number): void
@@ -41,6 +56,7 @@ export function useSimulation(
     renderer.seed(seed)
 
     const holes: BlackHole[] = []
+    const bursts: NebulaBurst[] = []
     let chaos = 0
     const drift: [number, number] = [0, 0]
 
@@ -92,8 +108,16 @@ export function useSimulation(
       drift[0] = Math.sin(time * 0.03) * 0.02
       drift[1] = Math.cos(time * 0.021) * 0.02
 
+      // age + prune nebula bursts (they keep evolving even when paused-idle)
+      for (let i = bursts.length - 1; i >= 0; i--) {
+        bursts[i].age += dt
+        if (bursts[i].age >= bursts[i].life) bursts.splice(i, 1)
+      }
+
       if (!s.paused && !prefersReduced) {
-        stepBlackHoles(holes, dt)
+        const { merged, exploded } = stepBlackHoles(holes, dt)
+        for (const m of merged) if (bursts.length < 12) bursts.push(makeBurst(m.x, m.y, m.mass))
+        for (const e of exploded) if (bursts.length < 12) bursts.push(makeBurst(e.x, e.y, e.mass * 1.4))
         const live = pruneDead(holes)
         holes.length = 0; holes.push(...live)
         renderer.particles.step({
@@ -104,7 +128,7 @@ export function useSimulation(
       }
 
       const render: HoleRender[] = holes.map(b => ({ ...b, w_horizon: horizonOf(b) }))
-      renderer.render(render, time, drift)
+      renderer.render(render, bursts, time, drift)
     }
 
     // local packer (avoids importing for the hot path twice)

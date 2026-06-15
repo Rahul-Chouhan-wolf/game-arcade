@@ -8,8 +8,9 @@ import {
 import { ParticleSystem } from '../simulation/particles'
 import {
   QUAD_VS, PARTICLE_VS, PARTICLE_FS, STAR_VS, STAR_FS, NEBULA_FS,
-  BH_VS, BH_FS, BLOOM_PREFILTER_FS, BLOOM_BLUR_FS, COMPOSITE_FS, COPY_FS,
+  BH_VS, BH_FS, BURST_VS, BURST_FS, BLOOM_PREFILTER_FS, BLOOM_BLUR_FS, COMPOSITE_FS, COPY_FS,
 } from './shaders/glsl'
+import type { NebulaBurst } from '../types'
 import { STARFIELD_COUNT, BLOOM_THRESHOLD, BLOOM_INTENSITY } from '../utils/constants'
 import { mulberry32, massColor } from '../utils/math'
 import { packHoles } from '../simulation/blackhole'
@@ -26,6 +27,7 @@ export class Renderer {
   private progStar: Program
   private progNebula: Program
   private progBH: Program
+  private progBurst: Program
   private progPrefilter: Program
   private progBlur: Program
   private progComposite: Program
@@ -52,6 +54,7 @@ export class Renderer {
     this.progStar = new Program(gl, STAR_VS, STAR_FS)
     this.progNebula = new Program(gl, QUAD_VS, NEBULA_FS)
     this.progBH = new Program(gl, BH_VS, BH_FS)
+    this.progBurst = new Program(gl, BURST_VS, BURST_FS)
     this.progPrefilter = new Program(gl, QUAD_VS, BLOOM_PREFILTER_FS)
     this.progBlur = new Program(gl, QUAD_VS, BLOOM_BLUR_FS)
     this.progComposite = new Program(gl, QUAD_VS, COMPOSITE_FS)
@@ -99,7 +102,7 @@ export class Renderer {
     this.bloomB = createFBO(gl, bw, bh, gl.LINEAR)
   }
 
-  private renderScene(holes: HoleRender[], time: number, drift: [number, number]) {
+  private renderScene(holes: HoleRender[], bursts: NebulaBurst[], time: number, drift: [number, number]) {
     const gl = this.gl
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.scene.fbo)
     gl.viewport(0, 0, this.scene.width, this.scene.height)
@@ -138,6 +141,25 @@ export class Renderer {
     gl.bindVertexArray(null)
 
     // Layer 5: accretion disks + event horizons
+    // Nebula bursts (merge / collapse) — colourful additive clouds
+    if (bursts.length) {
+      p = this.progBurst.use(gl)
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.bhQuadBuf)
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
+      for (const b of bursts) {
+        const age = Math.min(1, b.age / b.life)
+        gl.uniform2f(p.uniforms.uCenter, b.x, b.y)
+        gl.uniform1f(p.uniforms.uRadius, b.radius)
+        gl.uniform1f(p.uniforms.uAge, age)
+        gl.uniform1f(p.uniforms.uSeed, b.seed)
+        gl.uniform3f(p.uniforms.uColA, b.colors[0][0], b.colors[0][1], b.colors[0][2])
+        gl.uniform3f(p.uniforms.uColB, b.colors[1][0], b.colors[1][1], b.colors[1][2])
+        gl.uniform3f(p.uniforms.uColC, b.colors[2][0], b.colors[2][1], b.colors[2][2])
+        gl.drawArrays(gl.TRIANGLES, 0, 3)
+      }
+    }
+
+    // Accretion disks + event horizons
     p = this.progBH.use(gl)
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bhQuadBuf)
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
@@ -175,9 +197,9 @@ export class Renderer {
     }
   }
 
-  render(holes: HoleRender[], time: number, drift: [number, number]) {
+  render(holes: HoleRender[], bursts: NebulaBurst[], time: number, drift: [number, number]) {
     const gl = this.gl
-    this.renderScene(holes, time, drift)
+    this.renderScene(holes, bursts, time, drift)
     if (this.bloom) this.renderBloom()
 
     const { data, count } = packHoles(holes, this.aspect)
@@ -201,7 +223,7 @@ export class Renderer {
     deleteFBO(gl, this.scene); deleteFBO(gl, this.bloomA); deleteFBO(gl, this.bloomB)
     gl.deleteBuffer(this.starBuf); gl.deleteBuffer(this.bhQuadBuf); gl.deleteBuffer(this.quad.buffer)
     gl.deleteVertexArray(this.particleVAO)
-    for (const pr of [this.progParticle, this.progStar, this.progNebula, this.progBH,
+    for (const pr of [this.progParticle, this.progStar, this.progNebula, this.progBH, this.progBurst,
       this.progPrefilter, this.progBlur, this.progComposite, this.progCopy]) {
       gl.deleteProgram(pr.program)
     }

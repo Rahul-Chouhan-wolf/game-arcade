@@ -23,6 +23,20 @@ export function massColor(mass: number): [number, number, number] {
   return mix3(ORANGE, WHITE, (m - 0.66) / 0.34)
 }
 
+export function hsv(h: number, s: number, v: number): [number, number, number] {
+  h = (h % 1 + 1) % 1
+  const i = Math.floor(h * 6), f = h * 6 - i
+  const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s)
+  switch (i % 6) {
+    case 0: return [v, t, p]
+    case 1: return [q, v, p]
+    case 2: return [p, v, t]
+    case 3: return [p, q, v]
+    case 4: return [t, p, v]
+    default: return [v, p, q]
+  }
+}
+
 // Mulberry32 — small seeded PRNG for reproducible "universe seeds".
 export function mulberry32(seed: number) {
   let a = seed >>> 0

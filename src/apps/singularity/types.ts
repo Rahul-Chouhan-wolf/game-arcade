@@ -35,3 +35,14 @@ export const DEFAULT_SETTINGS: Settings = {
 }
 
 export interface PointerSample { x: number; y: number; t: number }
+
+// A colourful nebula cloud born when two black holes merge / collapse.
+export interface NebulaBurst {
+  x: number          // clip space
+  y: number
+  age: number        // seconds elapsed
+  life: number       // total lifetime (s)
+  radius: number     // max expansion radius (clip)
+  seed: number
+  colors: [[number, number, number], [number, number, number], [number, number, number]]
+}

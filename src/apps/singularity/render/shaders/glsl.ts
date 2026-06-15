@@ -273,6 +273,57 @@ void main(){
   frag = vec4(col, 1.0);
 }`
 
+// ── Nebula burst: colourful expanding cloud born when black holes merge ─────
+export const BURST_VS = /* glsl */ `#version 300 es
+precision highp float;
+layout(location=0) in vec2 aPos;
+uniform vec2 uCenter;
+uniform float uRadius;
+out vec2 vLocal;
+void main(){
+  vLocal = aPos;
+  gl_Position = vec4(uCenter + aPos * uRadius, 0.0, 1.0);
+}`
+
+export const BURST_FS = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vLocal;
+out vec4 frag;
+uniform float uAge;        // 0..1 lifetime
+uniform float uSeed;
+uniform vec3 uColA;
+uniform vec3 uColB;
+uniform vec3 uColC;
+${NOISE}
+void main(){
+  float r = length(vLocal);
+  if(r > 1.0) discard;
+
+  vec2 p = vLocal * 2.2 + uSeed;
+  float t = uAge * 2.5;
+  // swirling, billowing fbm shells
+  float ang = atan(vLocal.y, vLocal.x);
+  vec2 sw = vec2(cos(ang), sin(ang)) * uAge * 0.6;
+  float n = fbm(p * 1.6 + sw + vec2(t * 0.3, -t * 0.2));
+  float n2 = fbm(p * 3.1 - vec2(t * 0.4, t * 0.25));
+
+  // three-colour mix → never muddy, always vivid
+  vec3 col = mix(uColA, uColB, smoothstep(0.2, 0.8, n));
+  col = mix(col, uColC, smoothstep(0.4, 0.95, n2));
+  col += vec3(1.0, 0.95, 0.9) * smoothstep(0.85, 1.0, n) * (1.0 - uAge); // hot filaments
+
+  // shockwave ring early, soft cloud later
+  float ring = smoothstep(0.06, 0.0, abs(r - uAge)) * (1.0 - uAge);
+  float body = smoothstep(1.0, 0.1, r) * (0.6 + 0.4 * n);
+
+  // birth flash → long fade
+  float fade = (1.0 - uAge);
+  float flash = exp(-uAge * 7.0);
+  float a = (body * 0.9 + ring * 1.4) * fade;
+  vec3 outc = col * (body + ring * 1.6) * fade + vec3(1.0) * flash * smoothstep(0.5, 0.0, r);
+  frag = vec4(outc, a);
+}`
+
 export const COPY_FS = /* glsl */ `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 frag; uniform sampler2D uTex;
