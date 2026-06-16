@@ -37,6 +37,16 @@ function recycleRadius(b: Body): number {
 
 function effMass(b: Body): number { return b.mass * BODY_CONFIG[b.kind].gravSign }
 
+const isBH = (k: BodyKind) => k === 'blackhole'
+const isWH = (k: BodyKind) => k === 'whitehole'
+const isStarish = (k: BodyKind) => k === 'star' || k === 'whitestar' || k === 'sun'
+
+// Tidal-disruption radius: a star/planet is shredded before reaching the
+// horizon, and a more massive hole reaches farther (horizon ∝ √mass).
+function tidalRadius(bh: Body, other: Body): number {
+  return eventHorizon(bh) * 2.6 + bodyRadius(other)
+}
+
 export type BurstKind = 'merge' | 'annihilation' | 'tidal' | 'collapse'
 export interface BurstReq { x: number; y: number; mass: number; kind: BurstKind; color?: [number, number, number] }
 
@@ -69,7 +79,15 @@ export function stepBodies(bodies: Body[], dt: number): { bursts: BurstReq[] } {
     }
   }
 
-  // Pairwise interactions.
+  // Pairwise interactions (scientifically grounded; first match wins per pair).
+  const absorbInto = (keep: Body, gone: Body, frac: number) => {
+    const m = keep.mass + gone.mass * frac
+    keep.vx = (keep.vx * keep.mass + gone.vx * gone.mass) / (keep.mass + gone.mass)
+    keep.vy = (keep.vy * keep.mass + gone.vy * gone.mass) / (keep.mass + gone.mass)
+    keep.mass = m
+    gone.dead = true
+  }
+
   for (let i = 0; i < bodies.length; i++) {
     const a = bodies[i]
     if (a.dead) continue
@@ -77,37 +95,62 @@ export function stepBodies(bodies: Body[], dt: number): { bursts: BurstReq[] } {
       const b = bodies[j]
       if (b.dead) continue
       const dist = Math.hypot(b.x - a.x, b.y - a.y)
-      const kinds = [a.kind, b.kind]
-      const isBH = (k: BodyKind) => k === 'blackhole'
+      const ka = a.kind, kb = b.kind
 
-      // black hole + white hole → annihilation
-      if (kinds.includes('blackhole') && kinds.includes('whitehole')
-        && dist < BH_MERGE_DIST + bodyRadius(a) + bodyRadius(b)) {
-        bursts.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, mass: (a.mass + b.mass) * 1.6, kind: 'annihilation' })
-        a.dead = true; b.dead = true
-        break
-      }
-
-      // black hole + black hole → merge
-      if (isBH(a.kind) && isBH(b.kind) && dist < BH_MERGE_DIST + eventHorizon(a) + eventHorizon(b)) {
-        const m = a.mass + b.mass
-        a.x = (a.x * a.mass + b.x * b.mass) / m
-        a.y = (a.y * a.mass + b.y * b.mass) / m
-        a.vx = (a.vx * a.mass + b.vx * b.mass) / m
-        a.vy = (a.vy * a.mass + b.vy * b.mass) / m
-        a.mass = m; a.growing = a.growing || b.growing; b.dead = true
-        bursts.push({ x: a.x, y: a.y, mass: m, kind: 'merge' })
+      // BH + WH → wormhole collapse (both ends cancel)
+      if ((isBH(ka) && isWH(kb)) || (isWH(ka) && isBH(kb))) {
+        if (dist < BH_MERGE_DIST + bodyRadius(a) + bodyRadius(b)) {
+          bursts.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, mass: (a.mass + b.mass) * 1.6, kind: 'annihilation' })
+          a.dead = true; b.dead = true
+          break
+        }
         continue
       }
 
-      // black hole + (star/sun/planet/whitestar) → tidal disruption
-      const bh = isBH(a.kind) ? a : isBH(b.kind) ? b : null
-      const other = bh === a ? b : bh === b ? a : null
-      if (bh && other && other.kind !== 'whitehole'
-        && dist < eventHorizon(bh) + bodyRadius(other)) {
-        bh.mass += other.mass * 0.4
-        other.dead = true
-        bursts.push({ x: other.x, y: other.y, mass: other.mass, kind: 'tidal', color: BODY_CONFIG[other.kind].color })
+      // BH + BH → inspiral merge (energy burst, remnant grows)
+      if (isBH(ka) && isBH(kb)) {
+        if (dist < BH_MERGE_DIST + eventHorizon(a) + eventHorizon(b)) {
+          const big = a.mass >= b.mass ? a : b, small = big === a ? b : a
+          big.x = (a.x * a.mass + b.x * b.mass) / (a.mass + b.mass)
+          big.y = (a.y * a.mass + b.y * b.mass) / (a.mass + b.mass)
+          absorbInto(big, small, 0.97)               // ~few % radiated as GW
+          big.growing = a.growing || b.growing
+          bursts.push({ x: big.x, y: big.y, mass: big.mass, kind: 'merge' })
+        }
+        continue
+      }
+
+      // BH + star/planet → tidal disruption (shredded at tidal radius, ~half accretes)
+      if (isBH(ka) || isBH(kb)) {
+        const bh = isBH(ka) ? a : b, other = bh === a ? b : a
+        if (dist < tidalRadius(bh, other)) {
+          absorbInto(bh, other, 0.45)
+          bursts.push({ x: other.x, y: other.y, mass: other.mass, kind: 'tidal', color: BODY_CONFIG[other.kind].color })
+        }
+        continue
+      }
+
+      // star/sun + planet → engulfment (planet accreted by the star)
+      if ((isStarish(ka) && kb === 'planet') || (ka === 'planet' && isStarish(kb))) {
+        const star = isStarish(ka) ? a : b, planet = star === a ? b : a
+        if (dist < bodyRadius(star)) {
+          absorbInto(star, planet, 0.5)
+          bursts.push({ x: planet.x, y: planet.y, mass: planet.mass * 0.6, kind: 'tidal', color: BODY_CONFIG[planet.kind].color })
+        }
+        continue
+      }
+
+      // star + star → stellar merger (luminous red nova → bigger star)
+      if (isStarish(ka) && isStarish(kb)) {
+        if (dist < (bodyRadius(a) + bodyRadius(b)) * 0.7) {
+          const big = a.mass >= b.mass ? a : b, small = big === a ? b : a
+          big.x = (a.x * a.mass + b.x * b.mass) / (a.mass + b.mass)
+          big.y = (a.y * a.mass + b.y * b.mass) / (a.mass + b.mass)
+          absorbInto(big, small, 1.0)
+          if (big.mass > BODY_CONFIG.sun.mass) big.kind = 'sun'
+          bursts.push({ x: big.x, y: big.y, mass: big.mass, kind: 'tidal', color: BODY_CONFIG[big.kind].color })
+        }
+        continue
       }
     }
   }
