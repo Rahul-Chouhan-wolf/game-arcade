@@ -36,7 +36,7 @@ interface Game {
   slitherPreview?:            boolean
   railRunnerPreview?:         boolean
   liquidPreview?:             boolean
-  singularityPreview?:        boolean
+  threeBodyPreview?:          boolean
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -95,16 +95,16 @@ const GAMES: Game[] = [
     liquidPreview: true,
   },
   {
-    id: "singularity",
-    name: "Singularity",
-    tagline: "Create and destroy black holes in a living universe",
+    id: "three-body",
+    name: "Three-Body Problem",
+    tagline: "Watch gravity and chaos play out between three stars",
     description: "",
-    tags: ["Space", "WebGL", "Generative"],
-    accent: "#a25bff",
-    href: "/singularity",
+    tags: ["Physics", "Chaos", "Educational"],
+    accent: "#6a8cff",
+    href: "/three-body",
     isLive: true,
     isNew: true,
-    singularityPreview: true,
+    threeBodyPreview: true,
   },
   {
     id: "boxle",
@@ -1070,37 +1070,32 @@ function LiquidMiniPreview() {
   )
 }
 
-// ── Singularity black-hole mini preview ───────────────────────────────────────
+// ── Three-Body mini preview (figure-eight orbit) ──────────────────────────────
 
-function SingularityMiniPreview() {
+function ThreeBodyMiniPreview() {
   return (
     <svg viewBox="0 0 124 72" width="124" height="72" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <radialGradient id="sgBg" cx="50%" cy="50%" r="75%">
-          <stop offset="0%" stopColor="#10132e"/>
-          <stop offset="100%" stopColor="#04050d"/>
+        <radialGradient id="tbBg" cx="50%" cy="45%" r="75%">
+          <stop offset="0%" stopColor="#0c1024"/>
+          <stop offset="100%" stopColor="#03040c"/>
         </radialGradient>
-        <radialGradient id="sgDisk" cx="50%" cy="50%" r="50%">
-          <stop offset="38%" stopColor="#000000" stopOpacity="0"/>
-          <stop offset="46%" stopColor="#4f7bff"/>
-          <stop offset="62%" stopColor="#a25bff"/>
-          <stop offset="80%" stopColor="#ff6bd0" stopOpacity="0.5"/>
-          <stop offset="100%" stopColor="#ff6bd0" stopOpacity="0"/>
-        </radialGradient>
-        <filter id="sgBlur"><feGaussianBlur stdDeviation="1.3"/></filter>
       </defs>
-      <rect width="124" height="72" rx="6" fill="url(#sgBg)"/>
+      <rect width="124" height="72" rx="6" fill="url(#tbBg)"/>
       {/* stars */}
-      {[12,30,52,74,96,112,22,64,88,104].map((x,i)=>(
-        <circle key={i} cx={x} cy={(i*13+7)%64+4} r={0.5+(i%3)*0.4} fill="#cdd8ff" opacity={0.5+(i%3)*0.16}/>
+      {[10,34,58,82,106,20,48,96,116].map((x,i)=>(
+        <circle key={i} cx={x} cy={(i*17+5)%62+5} r={0.4+(i%3)*0.35} fill="#cdd8ff" opacity={0.4+(i%3)*0.18}/>
       ))}
-      {/* accretion disk (tilted) */}
-      <g transform="translate(62 36) rotate(-18)" filter="url(#sgBlur)" style={{ mixBlendMode: "screen" }}>
-        <ellipse cx="0" cy="0" rx="34" ry="13" fill="none" stroke="url(#sgDisk)" strokeWidth="9"/>
-      </g>
-      {/* event horizon core */}
-      <circle cx="62" cy="36" r="9.5" fill="#000"/>
-      <circle cx="62" cy="36" r="10.5" fill="none" stroke="#bcd0ff" strokeWidth="0.8" opacity="0.6"/>
+      {/* figure-eight path */}
+      <path d="M62 36 C 40 18, 18 22, 24 36 C 30 50, 52 46, 62 36 C 72 26, 94 22, 100 36 C 106 50, 84 54, 62 36 Z"
+            fill="none" stroke="#3b4a78" strokeWidth="1.4"/>
+      {/* three bodies on the path */}
+      <circle cx="24" cy="36" r="5" fill="#5b8cff"/>
+      <circle cx="100" cy="36" r="5" fill="#ff6b6b"/>
+      <circle cx="62" cy="36" r="5.5" fill="#ffd84d"/>
+      <circle cx="24" cy="36" r="9" fill="#5b8cff" opacity="0.18"/>
+      <circle cx="100" cy="36" r="9" fill="#ff6b6b" opacity="0.18"/>
+      <circle cx="62" cy="36" r="10" fill="#ffd84d" opacity="0.18"/>
     </svg>
   )
 }
@@ -1108,7 +1103,7 @@ function SingularityMiniPreview() {
 // ── Preview dispatcher ────────────────────────────────────────────────────────
 
 function GamePreview({ game }: { game: Game }) {
-  if (game.singularityPreview)     return <SingularityMiniPreview/>
+  if (game.threeBodyPreview)       return <ThreeBodyMiniPreview/>
   if (game.liquidPreview)          return <LiquidMiniPreview/>
   if (game.railRunnerPreview)      return <RailRunnerMiniPreview/>
   if (game.slitherPreview)         return <SlitherMiniPreview/>
