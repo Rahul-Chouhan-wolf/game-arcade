@@ -36,6 +36,7 @@ interface Game {
   slitherPreview?:            boolean
   railRunnerPreview?:         boolean
   liquidPreview?:             boolean
+  threeBodyPreview?:          boolean
 }
 
 // ── Game registry ─────────────────────────────────────────────────────────────
@@ -92,6 +93,18 @@ const GAMES: Game[] = [
     isLive: true,
     isNew: true,
     liquidPreview: true,
+  },
+  {
+    id: "three-body",
+    name: "Three-Body Problem",
+    tagline: "Watch gravity and chaos play out between three stars",
+    description: "",
+    tags: ["Physics", "Chaos", "Educational"],
+    accent: "#6a8cff",
+    href: "/three-body",
+    isLive: true,
+    isNew: true,
+    threeBodyPreview: true,
   },
   {
     id: "boxle",
@@ -1057,9 +1070,40 @@ function LiquidMiniPreview() {
   )
 }
 
+// ── Three-Body mini preview (figure-eight orbit) ──────────────────────────────
+
+function ThreeBodyMiniPreview() {
+  return (
+    <svg viewBox="0 0 124 72" width="124" height="72" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="tbBg" cx="50%" cy="45%" r="75%">
+          <stop offset="0%" stopColor="#0c1024"/>
+          <stop offset="100%" stopColor="#03040c"/>
+        </radialGradient>
+      </defs>
+      <rect width="124" height="72" rx="6" fill="url(#tbBg)"/>
+      {/* stars */}
+      {[10,34,58,82,106,20,48,96,116].map((x,i)=>(
+        <circle key={i} cx={x} cy={(i*17+5)%62+5} r={0.4+(i%3)*0.35} fill="#cdd8ff" opacity={0.4+(i%3)*0.18}/>
+      ))}
+      {/* figure-eight path */}
+      <path d="M62 36 C 40 18, 18 22, 24 36 C 30 50, 52 46, 62 36 C 72 26, 94 22, 100 36 C 106 50, 84 54, 62 36 Z"
+            fill="none" stroke="#3b4a78" strokeWidth="1.4"/>
+      {/* three bodies on the path */}
+      <circle cx="24" cy="36" r="5" fill="#5b8cff"/>
+      <circle cx="100" cy="36" r="5" fill="#ff6b6b"/>
+      <circle cx="62" cy="36" r="5.5" fill="#ffd84d"/>
+      <circle cx="24" cy="36" r="9" fill="#5b8cff" opacity="0.18"/>
+      <circle cx="100" cy="36" r="9" fill="#ff6b6b" opacity="0.18"/>
+      <circle cx="62" cy="36" r="10" fill="#ffd84d" opacity="0.18"/>
+    </svg>
+  )
+}
+
 // ── Preview dispatcher ────────────────────────────────────────────────────────
 
 function GamePreview({ game }: { game: Game }) {
+  if (game.threeBodyPreview)       return <ThreeBodyMiniPreview/>
   if (game.liquidPreview)          return <LiquidMiniPreview/>
   if (game.railRunnerPreview)      return <RailRunnerMiniPreview/>
   if (game.slitherPreview)         return <SlitherMiniPreview/>
