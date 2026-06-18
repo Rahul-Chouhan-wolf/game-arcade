@@ -2,22 +2,6 @@ import styles from '../styles/ThreeBody.module.css'
 import type { Stats } from '../types'
 import type { Preset } from '../simulation/presets'
 
-function Sparkline({ data }: { data: number[] }) {
-  if (data.length < 2) return <div className={styles.sparkEmpty} />
-  const min = Math.min(...data), max = Math.max(...data)
-  const span = max - min || 1
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * 100
-    const y = 26 - ((v - min) / span) * 24 - 1
-    return `${x.toFixed(2)},${y.toFixed(2)}`
-  }).join(' ')
-  return (
-    <svg className={styles.spark} viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={pts} fill="none" stroke="#6ad6ff" strokeWidth="1.2" />
-    </svg>
-  )
-}
-
 function fmt(v: number, d = 2): string {
   if (!isFinite(v)) return '—'
   if (Math.abs(v) >= 1000 || (v !== 0 && Math.abs(v) < 0.01)) return v.toExponential(1)
@@ -51,7 +35,6 @@ export function InfoPanel({ preset, stats, visible }: { preset: Preset; stats: S
         </span>
         <span className={styles.conserveHint}>energy must stay constant</span>
       </div>
-      <Sparkline data={stats.energyHistory} />
 
       <div className={styles.barRow} title="Kinetic vs potential energy">
         <span className={styles.metricLabel}>KE / PE</span>

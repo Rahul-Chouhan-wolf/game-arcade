@@ -1,11 +1,12 @@
 import styles from '../styles/ThreeBody.module.css'
 import { PRESETS, type Preset } from '../simulation/presets'
-import type { Settings } from '../types'
+import type { Settings, BodyInfo } from '../types'
 
 interface Props {
   settings: Settings
   activeId: string
   visible: boolean
+  bodies: BodyInfo[]
   onChange: (p: Partial<Settings>) => void
   onLoad: (p: Preset) => void
   onRandom: () => void
@@ -13,6 +14,7 @@ interface Props {
   onStep: () => void
   onScreenshot: () => void
   onFullscreen: () => void
+  onSetMass: (i: number, m: number) => void
 }
 
 function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
@@ -83,6 +85,27 @@ export function ControlPanel(props: Props) {
           <Toggle label="Chaos twin" on={s.chaosGhost} onClick={() => props.onChange({ chaosGhost: !s.chaosGhost })} />
         </div>
       </div>
+
+      {props.bodies.length > 0 && (
+        <div className={styles.section}>
+          <div className={styles.sectionLabel}>Masses — drag to change the balance</div>
+          <div className={styles.masses}>
+            {props.bodies.map((b, i) => (
+              <label key={i} className={styles.massRow}>
+                <span className={styles.massDot} style={{ background: b.color }} />
+                <span className={styles.massName}>{b.label}</span>
+                <input
+                  type="range" min={0.1} max={6} step={0.1} value={b.mass}
+                  onChange={e => props.onSetMass(i, parseFloat(e.target.value))}
+                  aria-label={`Mass of ${b.label}`}
+                  style={{ accentColor: b.color }}
+                />
+                <span className={styles.massVal}>{b.mass.toFixed(1)}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className={styles.footRow}>
         <button type="button" className={styles.btn} onClick={props.onScreenshot}>Screenshot</button>

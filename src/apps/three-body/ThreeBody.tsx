@@ -5,8 +5,9 @@ import styles from './styles/ThreeBody.module.css'
 import { Canvas } from './components/Canvas'
 import { ControlPanel } from './components/ControlPanel'
 import { InfoPanel } from './components/InfoPanel'
+import { EnergyGraph } from './components/EnergyGraph'
 import { useThreeBody } from './hooks/useThreeBody'
-import { DEFAULT_SETTINGS, EMPTY_STATS, type Settings, type Stats } from './types'
+import { DEFAULT_SETTINGS, EMPTY_STATS, type Settings, type Stats, type BodyInfo } from './types'
 import { PRESETS, type Preset } from './simulation/presets'
 
 const AUTOHIDE_MS = 4000
@@ -23,10 +24,12 @@ export default function ThreeBody() {
 
   const [stats, setStats] = useState<Stats>(EMPTY_STATS)
   const [preset, setPreset] = useState<Preset>(PRESETS[0])
+  const [bodies, setBodies] = useState<BodyInfo[]>([])
   const onStats = useCallback((s: Stats) => setStats(s), [])
   const onPreset = useCallback((p: Preset) => setPreset(p), [])
+  const onBodies = useCallback((b: BodyInfo[]) => setBodies(b), [])
 
-  const { ready, actionsRef } = useThreeBody(canvasRef, settingsRef, onStats, onPreset)
+  const { ready, actionsRef } = useThreeBody(canvasRef, settingsRef, onStats, onPreset, onBodies)
 
   const [faded, setFaded] = useState(true)
   useEffect(() => { if (ready) { const t = setTimeout(() => setFaded(false), 80); return () => clearTimeout(t) } }, [ready])
@@ -77,10 +80,13 @@ export default function ThreeBody() {
 
       <InfoPanel preset={preset} stats={stats} visible={uiVisible} />
 
+      <EnergyGraph series={stats.series} visible={uiVisible} />
+
       <ControlPanel
         settings={settings}
         activeId={preset.id}
         visible={uiVisible}
+        bodies={bodies}
         onChange={patch}
         onLoad={(p) => actionsRef.current?.loadPreset(p)}
         onRandom={() => actionsRef.current?.randomize()}
@@ -88,6 +94,7 @@ export default function ThreeBody() {
         onStep={() => actionsRef.current?.step()}
         onScreenshot={() => actionsRef.current?.screenshot()}
         onFullscreen={toggleFullscreen}
+        onSetMass={(i, m) => actionsRef.current?.setMass(i, m)}
       />
 
       {settings.uiHidden && (

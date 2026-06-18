@@ -22,6 +22,10 @@ export const DEFAULT_SETTINGS: Settings = {
   uiHidden: false,
 }
 
+export interface EnergySample { t: number; ke: number; pe: number; total: number }
+
+export interface BodyInfo { mass: number; color: string; label: string }
+
 export interface Stats {
   time: number
   energy: number
@@ -32,10 +36,10 @@ export interface Stats {
   momentum: number
   divergence: number | null   // ghost separation distance (chaos demo)
   ejected: boolean
-  energyHistory: number[]
+  series: EnergySample[]      // KE / PE / total history for the graph
 }
 
 export const EMPTY_STATS: Stats = {
   time: 0, energy: 0, energy0: 0, drift: 0, ke: 0, pe: 0,
-  momentum: 0, divergence: null, ejected: false, energyHistory: [],
+  momentum: 0, divergence: null, ejected: false, series: [],
 }

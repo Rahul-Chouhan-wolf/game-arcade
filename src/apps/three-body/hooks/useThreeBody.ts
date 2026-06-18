@@ -6,7 +6,7 @@ import {
   centerOfMass, maxComDistance, type Body,
 } from '../simulation/physics'
 import { PRESETS, randomPreset, type Preset } from '../simulation/presets'
-import type { Settings, Stats } from '../types'
+import type { Settings, Stats, EnergySample, BodyInfo } from '../types'
 
 export interface ThreeBodyActions {
   loadPreset(p: Preset): void
@@ -14,6 +14,7 @@ export interface ThreeBodyActions {
   randomize(): void
   step(): void
   screenshot(): void
+  setMass(index: number, mass: number): void
 }
 
 const cloneBodies = (bs: Body[]): Body[] => bs.map(b => ({ ...b, trail: [] }))
@@ -23,6 +24,7 @@ export function useThreeBody(
   settingsRef: React.RefObject<Settings>,
   onStats: (s: Stats) => void,
   onPreset: (p: Preset) => void,
+  onBodies: (b: BodyInfo[]) => void,
 ) {
   const [ready, setReady] = useState(false)
   const actionsRef = useRef<ThreeBodyActions | null>(null)
@@ -39,7 +41,7 @@ export function useThreeBody(
     let G = current.G
     let time = 0
     let energy0 = 0
-    const energyHistory: number[] = []
+    const series: EnergySample[] = []
     let ejected = false
     const view: View = { cx: 0, cy: 0, scale: 120 }
     let viewInit = false
@@ -47,9 +49,10 @@ export function useThreeBody(
     function load(p: Preset) {
       current = p; onPreset(p)
       bodies = p.bodies(); G = p.G; time = 0; ejected = false
-      ghost = null; energyHistory.length = 0; viewInit = false
+      ghost = null; series.length = 0; viewInit = false
       ensureAccel(bodies, G)
       energy0 = totalEnergy(bodies, G)
+      onBodies(bodies.map(b => ({ mass: b.mass, color: b.color, label: b.label })))
     }
     load(current)
 
@@ -61,6 +64,14 @@ export function useThreeBody(
       screenshot: () => {
         const url = renderer.screenshot()
         const a = document.createElement('a'); a.href = url; a.download = `three-body-${current.id}.png`; a.click()
+      },
+      setMass: (i, m) => {
+        if (!bodies[i]) return
+        bodies[i].mass = m
+        ensureAccel(bodies, G)
+        energy0 = totalEnergy(bodies, G)   // re-baseline (mass change alters E)
+        series.length = 0
+        onBodies(bodies.map(b => ({ mass: b.mass, color: b.color, label: b.label })))
       },
     }
 
@@ -151,16 +162,16 @@ export function useThreeBody(
       statT += dt
       if (statT > 0.1) {
         statT = 0
-        const E = totalEnergy(bodies, G)
-        energyHistory.push(E)
-        if (energyHistory.length > 120) energyHistory.shift()
+        const ke = kineticEnergy(bodies), pe = potentialEnergy(bodies, G)
+        const E = ke + pe
+        series.push({ t: time, ke, pe, total: E })
+        if (series.length > 180) series.shift()
         const div = ghost ? Math.hypot(bodies[0].x - ghost[0].x, bodies[0].y - ghost[0].y) : null
         onStats({
           time, energy: E, energy0,
           drift: energy0 !== 0 ? Math.abs((E - energy0) / energy0) * 100 : 0,
-          ke: kineticEnergy(bodies), pe: potentialEnergy(bodies, G),
-          momentum: momentum(bodies).mag, divergence: div, ejected,
-          energyHistory: [...energyHistory],
+          ke, pe, momentum: momentum(bodies).mag, divergence: div, ejected,
+          series: series.slice(),
         })
       }
     }
@@ -183,7 +194,7 @@ export function useThreeBody(
       canvas.removeEventListener('pointerup', onUp)
       canvas.removeEventListener('pointercancel', onUp)
     }
-  }, [canvasRef, settingsRef, onStats, onPreset])
+  }, [canvasRef, settingsRef, onStats, onPreset, onBodies])
 
   return { ready, actionsRef }
 }
